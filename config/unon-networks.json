@@ -1,0 +1,133 @@
+{
+  "defaultNetwork": "worldchainSepolia",
+  "networks": {
+    "worldchainSepolia": {
+      "chainId": 4801,
+      "label": "World Chain Sepolia",
+      "networkName": "worldchain-sepolia",
+      "rpcUrl": "https://worldchain-sepolia.g.alchemy.com/public",
+      "explorerBaseUrl": "https://sepolia.worldscan.org",
+      "contracts": {
+        "unonToken": "0x455166E86D3FBa42ebfa75C4653e601faF1d3374",
+        "onboardingManager": "0x83D096Ff359f1a417b461BEBfe6a0aC26BF18a54",
+        "settlementManager": "0xAF95E8380985cE6606fDD456ADF2213615E2c39D",
+        "stakingLevelManager": "0x9aF4A6a8d4DcB36Ab72C741eb7b5C0586D62d13E",
+        "stakingRewardPool": "0xdb750f4198F9FF561f1f80B98122b7D0C9A253E2",
+        "fanSupportManager": "0x4e8377847DC2c721064c3C3e00e3E88e9cA89740",
+        "missionRewardManager": "0x921FeBc7F94886a20BFa83abbc54183b446859bF",
+        "creatorAwardsDistributor": "0x44fA582A7269fA45B0874f1318A110F1c7AEB45b",
+        "prizeChallengeManager": "0x43F092e3B98117D3D564bce152879bf5674FE6d7",
+        "migrationSourceToken": "",
+        "migrationManager": "",
+        "treasuryVault": "0x3C17A67869578913F7f6B19fA0ea95811DE25824",
+        "vestingVault": "0x64a1C32050bCb37549e43DB9f91b1d548b9166C2",
+        "wldToken": ""
+      },
+      "wallets": {
+        "governanceAdmin": "0xaaE1c41D8EBDF91c86AD66094452bfEcF9F633E3",
+        "onboardingVerifier": "0xcADDcFB81AA202EE3Bb183b3afAC88fFeD6f8822",
+        "prizeRegistrar": "0xB91aAb75a7497D383834668Ab8f7E7214b1Ccd46",
+        "growthRecipient": "0x5412F36B23fC6b8A9aDFa46182F0f15AF95d80Fe",
+        "liquidityRecipient": "0xe735b26950D61d803998321a52a1d0F1a16AA1bb",
+        "teamBeneficiaries": [
+          "0xc4B818F15E1F3db807edF92f6487b53C0A0Cd6e0",
+          "0xb4e6D9ae4D4844C826Ecdd7DFBEfD15758111326"
+        ],
+        "trackedWallets": [
+          {
+            "key": "bootstrap_deployer",
+            "label": "Bootstrap Deployer",
+            "category": "Deployment",
+            "address": "0x9f17141a0b7B5A988338223D660f8F5c99fA45CE"
+          },
+          {
+            "key": "growth_recipient",
+            "label": "Growth / Marketing Recipient",
+            "category": "Growth",
+            "address": "0x5412F36B23fC6b8A9aDFa46182F0f15AF95d80Fe"
+          },
+          {
+            "key": "liquidity_recipient",
+            "label": "Liquidity Recipient",
+            "category": "Liquidity",
+            "address": "0xe735b26950D61d803998321a52a1d0F1a16AA1bb"
+          }
+        ]
+      },
+      "policy": {
+        "welcomeBonusUnon": 100,
+        "welcomeBonusEndsAt": "2026-12-31",
+        "sayHelloRewardUnon": 2,
+        "platinumMinimumUnon": 10000,
+        "challengeReservationUnon": 10000,
+        "prizeVoteAmountUnon": 1,
+        "fanSupportCreatorShareBps": 9500,
+        "fanSupportPlatformFeeBps": 500
+      }
+    },
+    "worldchain": {
+      "chainId": 480,
+      "label": "World Chain",
+      "networkName": "worldchain",
+      "rpcUrl": "https://worldchain-mainnet.g.alchemy.com/public",
+      "explorerBaseUrl": "https://worldscan.org",
+      "contracts": {
+        "unonToken": "0x827F453646EE0622d122232f1CF00a10b1827Cd6",
+        "onboardingManager": "0xE9c1c3ceE0EDaEA13081A177f1108839d0458083",
+        "settlementManager": "0xAc83B700f5c1759f9C6b7F2601e495741ca1d78C",
+        "stakingLevelManager": "0xa15200ec5E4d87e3a8dDF166d5a9a88223D4C8bD",
+        "stakingRewardPool": "0xe6457B3e91960269a406d7270e79ea7BA6728668",
+        "fanSupportManager": "0x69A9B1ddA1945bCC36B92e87776C6F3CDf5F11dc",
+        "missionRewardManager": "0xf71A558a13F72944e1352A7D35F4CEBa1Ad85eeF",
+        "creatorAwardsDistributor": "0xF74a875389c8a64007A7d87d3DaC0664FeDea752",
+        "prizeChallengeManager": "0x9f93F1c50d0222BA6e75889653F7A23c908BD8Ea",
+        "migrationSourceToken": "0x97e8940215123D701D940fA6Ea5B9b35e9CB8f67",
+        "migrationManager": "0x42e53b6D69cd29Ed1D371FdCD61B986b273aA05D",
+        "treasuryVault": "0x87eD274Ba1932A693B4720FaD98bF762776C6abB",
+        "vestingVault": "0xCf86Aa459e948CE96AD5D4ec96198d6e6ffAf0eB",
+        "wldToken": "0x2cFc85d8E48F8EAB294be644d9E25C3030863003"
+      },
+      "wallets": {
+        "governanceAdmin": "0xaaE1c41D8EBDF91c86AD66094452bfEcF9F633E3",
+        "onboardingVerifier": "0xcADDcFB81AA202EE3Bb183b3afAC88fFeD6f8822",
+        "prizeRegistrar": "0xB91aAb75a7497D383834668Ab8f7E7214b1Ccd46",
+        "growthRecipient": "0x5412F36B23fC6b8A9aDFa46182F0f15AF95d80Fe",
+        "liquidityRecipient": "0xe735b26950D61d803998321a52a1d0F1a16AA1bb",
+        "teamBeneficiaries": [
+          "0xc4B818F15E1F3db807edF92f6487b53C0A0Cd6e0",
+          "0xb4e6D9ae4D4844C826Ecdd7DFBEfD15758111326"
+        ],
+        "trackedWallets": [
+          {
+            "key": "bootstrap_deployer",
+            "label": "Bootstrap Deployer",
+            "category": "Deployment",
+            "address": "0x9f17141a0b7B5A988338223D660f8F5c99fA45CE"
+          },
+          {
+            "key": "growth_recipient",
+            "label": "Growth / Marketing Recipient",
+            "category": "Growth",
+            "address": "0x5412F36B23fC6b8A9aDFa46182F0f15AF95d80Fe"
+          },
+          {
+            "key": "liquidity_recipient",
+            "label": "Liquidity Recipient",
+            "category": "Liquidity",
+            "address": "0xe735b26950D61d803998321a52a1d0F1a16AA1bb"
+          }
+        ]
+      },
+      "policy": {
+        "welcomeBonusUnon": 100,
+        "welcomeBonusEndsAt": "2026-12-31",
+        "sayHelloRewardUnon": 2,
+        "platinumMinimumUnon": 10000,
+        "challengeReservationUnon": 10000,
+        "prizeVoteAmountUnon": 1,
+        "fanSupportCreatorShareBps": 9500,
+        "fanSupportPlatformFeeBps": 500
+      }
+    }
+  }
+}

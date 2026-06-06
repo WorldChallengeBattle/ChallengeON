@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Good ON Watermark Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, Pretendard, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #05070d;
+      color: #fff;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 20% 10%, rgba(0, 92, 255, 0.18), transparent 32%), #05070d;
+    }
+
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(24px, 5vw, 44px);
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 8px 0 0;
+      color: rgba(255,255,255,0.68);
+      line-height: 1.5;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      min-height: 42px;
+      padding: 0 16px;
+      background: #fff;
+      color: #05070d;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .panel {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .panel-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .panel-head strong {
+      font-size: 15px;
+    }
+
+    .panel-head span {
+      color: rgba(255,255,255,0.58);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    canvas {
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      display: block;
+      background: #111827;
+    }
+
+    .legend {
+      display: grid;
+      gap: 8px;
+      margin-top: 18px;
+      padding: 16px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      color: rgba(255,255,255,0.72);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 760px) {
+      header {
+        display: grid;
+        align-items: start;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Watermark & Ending Demo</h1>
+        <p>Live capture and imported video flows rendered with the same brand assets.</p>
+      </div>
+      <button id="restart">Replay</button>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <div class="panel-head">
+          <strong>Live Camera Upload</strong>
+          <span>Human badge + verification credit + ending</span>
+        </div>
+        <canvas id="humanCanvas" width="720" height="1280"></canvas>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <strong>Imported Video</strong>
+          <span>Good ON watermark + ending</span>
+        </div>
+        <canvas id="brandCanvas" width="720" height="1280"></canvas>
+      </article>
+    </section>
+
+    <section class="legend">
+      <div><strong>0-6s</strong>: sample video area with top-right watermark.</div>
+      <div><strong>Live camera only</strong>: blue World ID verified human credit appears before the ending.</div>
+      <div><strong>Final ending</strong>: Good ON ending image fills the frame with a soft fade.</div>
+    </section>
+  </main>
+
+  <script>
+    const assets = {
+      human: 'human-verified-badge.svg',
+      icon: 'src/assets/brand/ChallengeOnICO.png',
+      endings: [
+        'src/assets/brand/Ending1.png',
+        'src/assets/brand/Ending2.png',
+      ],
+    };
+
+    const loadImage = (src) => new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => resolve(null);
+      image.src = src;
+    });
+
+    const drawCover = (ctx, image, width, height) => {
+      const imageRatio = image.naturalWidth / image.naturalHeight;
+      const canvasRatio = width / height;
+      let drawWidth = width;
+      let drawHeight = height;
+      let x = 0;
+      let y = 0;
+
+      if (imageRatio > canvasRatio) {
+        drawHeight = height;
+        drawWidth = height * imageRatio;
+        x = (width - drawWidth) / 2;
+      } else {
+        drawWidth = width;
+        drawHeight = width / imageRatio;
+        y = (height - drawHeight) / 2;
+      }
+
+      ctx.drawImage(image, x, y, drawWidth, drawHeight);
+    };
+
+    const drawSampleVideo = (ctx, width, height, elapsed, label) => {
+      const gradient = ctx.createLinearGradient(0, 0, width, height);
+      gradient.addColorStop(0, '#111827');
+      gradient.addColorStop(0.45, '#172033');
+      gradient.addColorStop(1, '#0b1020');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+
+      for (let i = 0; i < 9; i += 1) {
+        const x = width * (0.1 + i * 0.11);
+        const y = height * (0.22 + Math.sin(elapsed * 1.4 + i) * 0.08);
+        ctx.fillStyle = `rgba(${80 + i * 12}, ${150 + i * 7}, 255, 0.16)`;
+        ctx.beginPath();
+        ctx.arc(x, y, width * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.font = '900 42px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, width / 2, height * 0.48);
+      ctx.fillStyle = 'rgba(255,255,255,0.58)';
+      ctx.font = '800 24px Inter, sans-serif';
+      ctx.fillText('Good ON sample clip', width / 2, height * 0.53);
+    };
+
+    const drawWatermark = (ctx, image, width, height) => {
+      const size = Math.max(58, Math.min(width, height) * 0.095);
+      const x = width - size - width * 0.045;
+      const y = height * 0.055;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.36)';
+      ctx.shadowBlur = size * 0.22;
+      ctx.shadowOffsetY = size * 0.08;
+      if (image) ctx.drawImage(image, x, y, size, size);
+      ctx.restore();
+    };
+
+    const drawHumanCredit = (ctx, humanImage, width, height, elapsed) => {
+      const gradient = ctx.createLinearGradient(0, 0, width, height);
+      gradient.addColorStop(0, '#005cff');
+      gradient.addColorStop(1, '#0b63ff');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      const pulse = 1 + Math.sin((elapsed / 5) * Math.PI) * 0.05;
+      const size = Math.min(width * 0.34, height * 0.2, 190) * pulse;
+      if (humanImage) ctx.drawImage(humanImage, width / 2 - size / 2, height * 0.34, size, size);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.font = '900 38px Inter, sans-serif';
+      ctx.fillText('Posted by a World ID verified human', width / 2, height * 0.58);
+      ctx.font = '800 22px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.72)';
+      ctx.fillText('Good ON creators are authenticated with World ID', width / 2, height * 0.63);
+    };
+
+    const drawEnding = (ctx, endingImage, width, height, elapsed) => {
+      if (endingImage) drawCover(ctx, endingImage, width, height);
+      else {
+        ctx.fillStyle = '#05070d';
+        ctx.fillRect(0, 0, width, height);
+      }
+      const progress = Math.min(elapsed / 3.4, 1);
+      const fadeIn = Math.min(progress / 0.22, 1);
+      const fadeOut = progress > 0.8 ? Math.max(0, (1 - progress) / 0.2) : 1;
+      ctx.fillStyle = `rgba(5,7,13,${1 - Math.min(fadeIn, fadeOut)})`;
+      ctx.fillRect(0, 0, width, height);
+    };
+
+    const startDemo = async () => {
+      const [humanImage, iconImage, endingOne, endingTwo] = await Promise.all([
+        loadImage(assets.human),
+        loadImage(assets.icon),
+        loadImage(assets.endings[0]),
+        loadImage(assets.endings[1]),
+      ]);
+      const endingImages = [endingOne, endingTwo].filter(Boolean);
+      const humanEndingImage = endingImages[Math.floor(Math.random() * endingImages.length)] || null;
+      const brandEndingImage = endingImages[Math.floor(Math.random() * endingImages.length)] || humanEndingImage;
+
+      const humanCanvas = document.getElementById('humanCanvas');
+      const brandCanvas = document.getElementById('brandCanvas');
+      const humanCtx = humanCanvas.getContext('2d');
+      const brandCtx = brandCanvas.getContext('2d');
+      const startedAt = performance.now();
+
+      const render = (now) => {
+        const elapsed = ((now - startedAt) / 1000) % 14.5;
+        const width = humanCanvas.width;
+        const height = humanCanvas.height;
+
+        if (elapsed < 6) {
+          drawSampleVideo(humanCtx, width, height, elapsed, 'Live Camera');
+          drawWatermark(humanCtx, humanImage, width, height);
+        } else if (elapsed < 11) {
+          drawHumanCredit(humanCtx, humanImage, width, height, elapsed - 6);
+        } else {
+          drawEnding(humanCtx, humanEndingImage, width, height, elapsed - 11);
+        }
+
+        if (elapsed < 6) {
+          drawSampleVideo(brandCtx, width, height, elapsed, 'Imported Video');
+          drawWatermark(brandCtx, iconImage, width, height);
+        } else {
+          drawEnding(brandCtx, brandEndingImage, width, height, elapsed - 6);
+        }
+
+        window.__demoFrame = requestAnimationFrame(render);
+      };
+
+      cancelAnimationFrame(window.__demoFrame || 0);
+      render(startedAt);
+    };
+
+    document.getElementById('restart').addEventListener('click', startDemo);
+    startDemo();
+  </script>
+</body>
+</html>

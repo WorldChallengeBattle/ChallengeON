@@ -1,0 +1,17 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Elite UNON badge">
+  <defs>
+    <radialGradient id="g" cx="34%" cy="24%" r="74%">
+      <stop offset="0" stop-color="#fff4a8"/>
+      <stop offset="0.48" stop-color="#d8a12e"/>
+      <stop offset="1" stop-color="#67410d"/>
+    </radialGradient>
+    <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#000" flood-opacity=".38"/>
+    </filter>
+  </defs>
+  <circle cx="128" cy="128" r="112" fill="url(#g)" filter="url(#s)"/>
+  <circle cx="128" cy="128" r="92" fill="none" stroke="#ffe07a" stroke-width="7"/>
+  <path d="M128 58c20 33 47 47 72 53-25 10-42 30-53 67l-19-32-19 32c-11-37-28-57-53-67 25-6 52-20 72-53z" fill="#fff0a0"/>
+  <path d="M75 178c30 18 76 18 106 0" stroke="#fff0a0" stroke-width="8" fill="none" opacity=".8"/>
+  <text x="128" y="224" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="900" fill="#ffe07a">ELITE</text>
+</svg>

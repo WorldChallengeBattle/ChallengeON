@@ -1,0 +1,18 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Silver UNON badge">
+  <defs>
+    <radialGradient id="g" cx="34%" cy="24%" r="75%">
+      <stop offset="0" stop-color="#f7fbff"/>
+      <stop offset="0.48" stop-color="#9eadb6"/>
+      <stop offset="1" stop-color="#4a5962"/>
+    </radialGradient>
+    <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#000" flood-opacity=".38"/>
+    </filter>
+  </defs>
+  <circle cx="128" cy="128" r="112" fill="url(#g)" filter="url(#s)"/>
+  <circle cx="128" cy="128" r="92" fill="none" stroke="#d8e5ec" stroke-width="7"/>
+  <path d="M84 86l44-17 44 17v42c0 33-22 52-44 63-22-11-44-30-44-63V86z" fill="#f2f9ff"/>
+  <path d="M128 72v120" stroke="#71818a" stroke-width="5" opacity=".55"/>
+  <g fill="#e7f1f7"><circle cx="84" cy="68" r="10"/><circle cx="172" cy="68" r="10"/><circle cx="82" cy="188" r="10"/><circle cx="174" cy="188" r="10"/></g>
+  <text x="128" y="224" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="900" fill="#d8e5ec">SILVER</text>
+</svg>

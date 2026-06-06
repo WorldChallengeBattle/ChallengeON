@@ -1,0 +1,18 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Diamond UNON badge">
+  <defs>
+    <radialGradient id="g" cx="34%" cy="24%" r="74%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.48" stop-color="#a8d5ff"/>
+      <stop offset="1" stop-color="#4f6f96"/>
+    </radialGradient>
+    <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#000" flood-opacity=".38"/>
+    </filter>
+  </defs>
+  <circle cx="128" cy="128" r="112" fill="url(#g)" filter="url(#s)"/>
+  <circle cx="128" cy="128" r="92" fill="none" stroke="#d7edff" stroke-width="7"/>
+  <path d="M62 103l31-36h70l31 36-66 74-66-74z" fill="#f6fbff"/>
+  <path d="M62 103h132M93 67l35 110 35-110M93 67l-14 36M163 67l14 36" stroke="#5d85ae" stroke-width="5" fill="none" opacity=".8"/>
+  <g fill="#f7fbff"><circle cx="73" cy="75" r="7"/><circle cx="183" cy="75" r="7"/><circle cx="128" cy="55" r="7"/></g>
+  <text x="128" y="224" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="900" fill="#d7edff">DIAMOND</text>
+</svg>

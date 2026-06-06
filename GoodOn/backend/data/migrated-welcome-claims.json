@@ -1,0 +1,23 @@
+{
+  "enabled": true,
+  "networkKey": "worldchain",
+  "activeTokenAddress": "0x827F453646EE0622d122232f1CF00a10b1827Cd6",
+  "source": "prior-wctv2-makewhole",
+  "sourceTokenAddress": "0x3C17A67869578913F7f6B19fA0ea95811DE25824",
+  "fromBlock": 28359888,
+  "toBlock": 28364050,
+  "generatedAt": "2026-05-21T22:03:06.456Z",
+  "note": "Prior WCTv2 welcome reward holders were made whole 1:1 during the U&On rebranding. Treat these allocations as completed welcome claims in admin reporting.",
+  "holders": [
+    {
+      "address": "0x44D2d43d8Af2728De94F4DB6C705eaB20eAcEeC9",
+      "amount": "100.0",
+      "rawAmount": "100000000000000000000"
+    },
+    {
+      "address": "0xaa3a56E607C99bdaC6b4D22FA9A6725a74A50154",
+      "amount": "100.0",
+      "rawAmount": "100000000000000000000"
+    }
+  ]
+}
