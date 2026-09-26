@@ -15,6 +15,7 @@ export interface Challenge {
   videoCount?: number;
   userVideoCount?: number;
   externalVideoCount?: number;
+  platforms?: string[];
   likes?: number;
   dislikes?: number;
   createdByUid?: string | null;

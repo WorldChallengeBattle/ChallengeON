@@ -3615,12 +3615,15 @@ iframe {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 16px;
   min-height: 34px;
 }
 
 .try-on-inline-btn,
+.battle-from-trend-btn,
+.battle-source-link,
 .platinum-inline-badge {
   height: 34px;
   display: inline-flex;
@@ -3638,6 +3641,74 @@ iframe {
   background: #67e8f9;
   color: #061015;
   cursor: pointer;
+}
+
+.battle-from-trend-btn,
+.battle-source-link {
+  border: 1px solid rgba(248, 193, 90, 0.3);
+  background: rgba(248, 193, 90, 0.08);
+  color: #f8c15a;
+  cursor: pointer;
+}
+
+.battle-from-trend-btn svg:last-child {
+  opacity: 0.7;
+}
+
+.battle-source-link {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battle-inspiration-banner {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 14px;
+  border: 1px solid rgba(248, 193, 90, 0.25);
+  border-radius: 8px;
+  background: rgba(248, 193, 90, 0.07);
+  color: #f8c15a;
+}
+
+.battle-inspiration-banner div {
+  min-width: 0;
+}
+
+.battle-inspiration-banner span,
+.battle-inspiration-banner strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battle-inspiration-banner span {
+  margin-bottom: 3px;
+  color: rgba(248, 250, 252, 0.58);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.battle-inspiration-banner strong {
+  color: #f8fafc;
+  font-size: 14px;
+}
+
+.battle-inspiration-banner button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(248, 250, 252, 0.7);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .platinum-inline-badge {

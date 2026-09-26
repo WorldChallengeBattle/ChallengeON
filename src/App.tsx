@@ -28,7 +28,8 @@ import {
   UploadCloud,
   Shield,
   MinusCircle,
-  Languages
+  Languages,
+  Swords
 } from 'lucide-react';
 import CameraCapture from './components/CameraCapture';
 import AdminPanel from './components/AdminPanel';
@@ -396,6 +397,7 @@ function App() {
   const [isSubmittingLink, setIsSubmittingLink] = useState(false);
   const [toast, setToast] = useState('');
   const [createForm, setCreateForm] = useState({ title: '', hashtags: '', region: REGIONS[0] });
+  const [battleInspiration, setBattleInspiration] = useState<Challenge | null>(null);
   const [createMode, setCreateMode] = useState<'standard' | 'prize'>('standard');
   const [prizeForm, setPrizeForm] = useState<PrizeFormState>(() => createDefaultPrizeForm());
   const [isCreating, setIsCreating] = useState(false);
@@ -958,6 +960,29 @@ function App() {
       showToast(sourceVideo ? 'Remix source selected.' : 'Create your Try ON entry.');
     }
     openJoinChallengeModal(challenge, { keepRemixSource: true });
+  };
+
+  const startBattleFromTrend = (challenge: Challenge) => {
+    const baseTitle = challenge.title.replace(/\s+(challenge|trend)$/i, '').trim() || challenge.title;
+    const tags = Array.from(new Set([
+      ...challenge.hashtags.split(/\s+/).filter(Boolean),
+      '#UNON',
+      '#challengeon'
+    ]));
+    setBattleInspiration(challenge);
+    setCreateMode('standard');
+    setCreateForm({
+      title: `${baseTitle} Battle`,
+      hashtags: tags.join(' '),
+      region: challenge.region || REGIONS[0]
+    });
+    setCurrentTab('create');
+  };
+
+  const openSourceTrend = (challengeId: string) => {
+    setExpandedChallengeId(challengeId);
+    localStorage.setItem('lastExpandedChallengeId', challengeId);
+    setCurrentTab('trend');
   };
 
 
@@ -1724,14 +1749,16 @@ function App() {
           createdByName: currentUser.displayName || 'Warrior',
           challengeMode: 'battle',
           notice: 'Creator-run Battle ON challenge',
+          inspiredByChallengeId: battleInspiration?.id || null,
           eventConfig: { type: 'custom_builder', modes: ['video_submission', 'vote', 'donation_ranking', 'operator_judging'] }
         })
       });
       
       const data = await response.json();
       if (data.success) {
-        showToast('🚀 Challenge Launched & Crawling Content!');
+        showToast('Battle ON challenge launched.');
         setCreateForm({ title: '', hashtags: '', region: REGIONS[0] });
+        setBattleInspiration(null);
         
         // Refresh feed data
         const refreshResponse = await fetch(apiUrl('/api/challenges'));
@@ -3153,6 +3180,18 @@ function App() {
           ) : null}
 
           <form className="create-form" onSubmit={handleCreateChallenge}>
+            {battleInspiration && (
+              <div className="battle-inspiration-banner">
+                <TrendingUp size={18} />
+                <div>
+                  <span>Trend ON</span>
+                  <strong>{battleInspiration.title}</strong>
+                </div>
+                <button type="button" onClick={() => setBattleInspiration(null)} aria-label="Remove Trend ON inspiration">
+                  <X size={16} />
+                </button>
+              </div>
+            )}
             <div className="form-group" style={{ marginBottom: '20px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--primary)', marginBottom: '8px', fontWeight: '800' }}>
                 <Trophy size={14} /> {t('arenaName')}
@@ -3420,6 +3459,9 @@ function App() {
         if (mode === 'battle') {
           return challengeMode === 'battle' || (challenge.userVideoCount || 0) > 0;
         }
+        if (mode === 'trend') {
+          return challengeMode === 'trend' && (challenge.externalVideoCount ?? challenge.videoCount ?? 0) > 0;
+        }
         return challengeMode === mode;
       })
       .filter(challenge => activeRegion === REGIONS[0] || challenge.region === activeRegion || challenge.region === REGIONS[0])
@@ -3558,8 +3600,13 @@ function App() {
     );
   };
 
-  const renderOnChallengeCard = (challenge: Challenge, mode: 'trend' | 'battle' | 'now') => (
-    <div
+  const renderOnChallengeCard = (challenge: Challenge, mode: 'trend' | 'battle' | 'now') => {
+    const inspiration = challenge.eventConfig?.inspiredBy as Record<string, unknown> | undefined;
+    const sourceChallengeId = typeof inspiration?.challengeId === 'string' ? inspiration.challengeId : null;
+    const sourceTitle = typeof inspiration?.title === 'string' ? inspiration.title : null;
+
+    return (
+      <div
       key={challenge.id}
       className={`on-card-shell ${expandedChallengeId === challenge.id ? 'expanded' : ''} ${challenge.challengeType === 'prize' ? 'platinum' : ''}`}
       id={`challenge-${challenge.id}`}
@@ -3567,7 +3614,7 @@ function App() {
       <motion.div className="on-card" whileTap={{ scale: 0.99 }} onClick={() => toggleExpand(challenge, mode)}>
         <div className="on-card-topline">
           <span>{mode === 'trend' ? 'TREND ON' : mode === 'battle' ? 'BATTLE ON' : 'NOW ON'}</span>
-          <small>{challenge.challengeType === 'prize' ? 'PLATINUM CHALLENGE' : (challenge.region || 'Global')}</small>
+          <small>{challenge.challengeType === 'prize' ? 'PLATINUM CHALLENGE' : mode === 'trend' && challenge.platforms?.length ? challenge.platforms.map(platform => platform === 'youtube' ? 'Shorts' : platform === 'instagram' ? 'Reels' : 'TikTok').join(' · ') : (challenge.region || 'Global')}</small>
         </div>
         <h3>{challenge.title}</h3>
         <p>{challenge.notice || challenge.hashtags}</p>
@@ -3579,15 +3626,39 @@ function App() {
         </div>
         <div className="on-card-actions">
           {mode === 'trend' && (
+            <>
+              <button
+                type="button"
+                className="try-on-inline-btn"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void tryOnChallenge(challenge);
+                }}
+              >
+                <Video size={15} /> Try ON
+              </button>
+              <button
+                type="button"
+                className="battle-from-trend-btn"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  startBattleFromTrend(challenge);
+                }}
+              >
+                <Swords size={15} /> Battle ON <ArrowRight size={14} />
+              </button>
+            </>
+          )}
+          {mode === 'battle' && sourceChallengeId && sourceTitle && (
             <button
               type="button"
-              className="try-on-inline-btn"
+              className="battle-source-link"
               onClick={(event) => {
                 event.stopPropagation();
-                void tryOnChallenge(challenge);
+                openSourceTrend(sourceChallengeId);
               }}
             >
-              <Video size={15} /> Try ON
+              <TrendingUp size={14} /> Trend ON · {sourceTitle}
             </button>
           )}
           {mode === 'battle' && challenge.challengeType === 'prize' && (
@@ -3596,8 +3667,9 @@ function App() {
         </div>
       </motion.div>
       {renderOnChallengeVideos(challenge, mode)}
-    </div>
-  );
+      </div>
+    );
+  };
 
   const renderOnSection = (mode: 'trend' | 'battle' | 'now') => {
     const copy = {

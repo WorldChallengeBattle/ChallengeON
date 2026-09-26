@@ -231,6 +231,17 @@ function findBestChallengeForVideo(video, challenges) {
   };
 }
 
+function selectDiverseVideos(videos, limit = 6, perPlatform = 2) {
+  const platformCounts = new Map();
+  return videos.filter((video) => {
+    const platform = normalizeText(video.platform || 'external');
+    const count = platformCounts.get(platform) || 0;
+    if (count >= perPlatform) return false;
+    platformCounts.set(platform, count + 1);
+    return true;
+  }).slice(0, limit);
+}
+
 module.exports = {
   GENERIC_TAGS,
   extractHashtags,
@@ -239,6 +250,7 @@ module.exports = {
   getVideoDurationSeconds,
   normalizeTag,
   normalizeText,
+  selectDiverseVideos,
   scoreShortFormPreference,
   scoreVideoForChallenge
 };

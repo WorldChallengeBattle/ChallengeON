@@ -33,7 +33,8 @@ const { google } = require('googleapis');
 const {
   scoreShortFormPreference,
   scoreVideoForChallenge,
-  normalizeTag
+  normalizeTag,
+  selectDiverseVideos
 } = require('./challenge-matcher');
 const {
   inferRegionDetails,
@@ -1370,6 +1371,7 @@ function mapChallengeRow(row) {
     videoCount: parseInt(row.video_count) || 0,
     userVideoCount: parseInt(row.user_video_count) || 0,
     externalVideoCount: parseInt(row.external_video_count) || 0,
+    platforms: Array.isArray(row.platforms) ? row.platforms.filter(Boolean) : [],
     likes: parseInt(row.likes) || 0,
     dislikes: parseInt(row.dislikes) || 0,
     createdByUid: row.created_by_uid || null,
@@ -2126,15 +2128,24 @@ app.post('/api/challenge-videos', async (req, res) => {
   const surfaceFilter = mode === 'trend'
     ? `AND NOT ${userVideoSql}`
     : (mode === 'battle' || mode === 'now' ? `AND ${userVideoSql}` : '');
+  const videoOrder = mode === 'trend' ? 'v.platform_rank ASC, RANDOM()' : 'RANDOM()';
   try {
     const result = await pool.query(`
+      WITH ranked_videos AS (
+        SELECT v.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY LOWER(COALESCE(v.platform, 'external'))
+            ORDER BY v.view_count DESC NULLS LAST, v.updated_at DESC
+          ) AS platform_rank
+        FROM ${TABLE_VIDEOS} v
+        WHERE v.challenge_id = $1
+          AND COALESCE(v.is_hidden, false) = false
+          ${surfaceFilter}
+      )
       SELECT v.*, u.wallet_address AS uploader_wallet_address
-      FROM ${TABLE_VIDEOS} v
+      FROM ranked_videos v
       LEFT JOIN users u ON v.author_uid = u.id
-      WHERE v.challenge_id = $1
-        AND COALESCE(v.is_hidden, false) = false
-        ${surfaceFilter}
-      ORDER BY RANDOM()
+      ORDER BY ${videoOrder}
       LIMIT 15
     `, [challengeId]);
     res.json({ success: true, count: result.rows.length, data: result.rows });
@@ -2244,6 +2255,7 @@ app.get('/api/challenges', async (req, res) => {
         COUNT(v.id) as video_count,
         COUNT(v.id) FILTER (WHERE v.author_uid IS NOT NULL OR v.author_wallet_address IS NOT NULL OR v.author_world_username IS NOT NULL) as user_video_count,
         COUNT(v.id) FILTER (WHERE v.author_uid IS NULL AND v.author_wallet_address IS NULL AND v.author_world_username IS NULL) as external_video_count,
+        ARRAY_REMOVE(ARRAY_AGG(DISTINCT v.platform), NULL) as platforms,
         u.wallet_address as creator_wallet_address
       FROM ${TABLE_CHALLENGES} c
       LEFT JOIN ${TABLE_VIDEOS} v ON c.id = v.challenge_id AND COALESCE(v.is_hidden, false) = false
@@ -2281,6 +2293,7 @@ app.get('/api/on-sections', async (req, res) => {
           COUNT(v.id) as video_count,
           COUNT(v.id) FILTER (WHERE v.author_uid IS NOT NULL OR v.author_wallet_address IS NOT NULL OR v.author_world_username IS NOT NULL) as user_video_count,
           COUNT(v.id) FILTER (WHERE v.author_uid IS NULL AND v.author_wallet_address IS NULL AND v.author_world_username IS NULL) as external_video_count,
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT v.platform), NULL) as platforms,
           u.wallet_address as creator_wallet_address
         FROM ${TABLE_CHALLENGES} c
         LEFT JOIN ${TABLE_VIDEOS} v ON c.id = v.challenge_id AND COALESCE(v.is_hidden, false) = false
@@ -2333,6 +2346,7 @@ app.post('/api/challenges', async (req, res) => {
     challengeMode,
     notice,
     eventConfig,
+    inspiredByChallengeId,
     rewardUnon
   } = req.body;
   const id = `user_${Date.now()}`;
@@ -2343,6 +2357,24 @@ app.post('/api/challenges', async (req, res) => {
       ? inferredRegion.region
       : requestedRegion;
     const mode = normalizeChallengeMode(challengeMode, 'battle');
+    let finalEventConfig = eventConfig && typeof eventConfig === 'object' ? { ...eventConfig } : {};
+    if (inspiredByChallengeId && mode === 'battle') {
+      const source = await pool.query(`
+        SELECT id, title, hashtags
+        FROM ${TABLE_CHALLENGES}
+        WHERE id = $1
+          AND is_active = true
+          AND COALESCE(challenge_mode, CASE WHEN challenge_type = 'prize' THEN 'battle' ELSE 'trend' END) = 'trend'
+        LIMIT 1
+      `, [inspiredByChallengeId]);
+      if (source.rows[0]) {
+        finalEventConfig.inspiredBy = {
+          challengeId: source.rows[0].id,
+          title: source.rows[0].title,
+          hashtags: source.rows[0].hashtags
+        };
+      }
+    }
     const queryStr = `
       INSERT INTO ${TABLE_CHALLENGES} (
         id, title, hashtags, region, viral_score, participants, bg_gradient,
@@ -2363,7 +2395,7 @@ app.post('/api/challenges', async (req, res) => {
       createdByName || null,
       mode,
       notice || null,
-      eventConfig || {},
+      finalEventConfig,
       rewardUnon || null
     ]);
     res.json({ success: true, data: result.rows[0] });
@@ -3285,44 +3317,28 @@ async function startBackgroundScraper() {
   console.log('[BACKGROUND] Worker starting sync...');
   if (process.env.APIFY_API_TOKEN === 'DUMMY_TOKEN') return;
 
-  let tasks = [];
-  
-  // Phase 1: Empty active challenges first, so the feed fills quickly.
+  const batchSize = Math.min(Math.max(parseInt(process.env.TREND_SYNC_BATCH_SIZE, 10) || 4, 1), 20);
+  const tasks = [];
+
+  // Rotate through active Trend ON topics so scheduled runs stay within the crawler budget.
   try {
-    const emptyRes = await pool.query(`
+    const trendRes = await pool.query(`
       SELECT c.id, c.title, c.hashtags, c.region
       FROM ${TABLE_CHALLENGES} c
       LEFT JOIN ${TABLE_VIDEOS} v ON c.id = v.challenge_id AND COALESCE(v.is_hidden, false) = false
       WHERE c.is_active = true
+        AND COALESCE(c.challenge_mode, CASE WHEN c.challenge_type = 'prize' THEN 'battle' ELSE 'trend' END) = 'trend'
         AND c.hashtags IS NOT NULL
         AND c.hashtags <> ''
       GROUP BY c.id
-      HAVING COUNT(v.id) = 0
-      ORDER BY COALESCE(c.created_at, NOW()) DESC
-      LIMIT 40
-    `);
-    emptyRes.rows.forEach(row => {
+      ORDER BY MAX(v.updated_at) ASC NULLS FIRST, COALESCE(c.created_at, NOW()) DESC
+      LIMIT $1
+    `, [batchSize]);
+    trendRes.rows.forEach(row => {
       const tag = row.hashtags.split(' ')[0].replace('#', '');
-      if (tag) tasks.push({ id: row.id, title: row.title, hashtags: row.hashtags, tag, region: row.region, forceFill: true });
+      if (tag) tasks.push({ id: row.id, title: row.title, hashtags: row.hashtags, tag, region: row.region });
     });
   } catch (e) {}
-
-  // Phase 2: Priority Tags (from Mar 2026 Trend Insight Report)
-  const PRIORITY = [
-    'nanobanana', 'agenticAI', 'generativevlog', 'aifilterchallenge',
-    'sealion', 'jonhammdancing', 'owlchallenge', 'justgonnaputthetvon', 'lifemissioncarousel',
-    'takaladentro', '365buttons', 'kpopmashupmar2026', 'heavencanwait',
-    'goinganalogue', '75hard', 'adminnight', 'sunshineboy',
-    'labubustyle', 'leveluppet', 'draculajennie'
-  ];
-  PRIORITY.forEach(tag => tasks.push({ id: `trend_${tag}`, tag, region: 'Global' }));
-
-  const seen = new Set();
-  tasks = tasks.filter(task => {
-    if (seen.has(task.id)) return false;
-    seen.add(task.id);
-    return true;
-  });
 
   for (const t of tasks) {
     await syncSingleChallenge(t);
@@ -3335,6 +3351,7 @@ async function syncEmptyChallengesNow(limit = 30) {
     FROM ${TABLE_CHALLENGES} c
     LEFT JOIN ${TABLE_VIDEOS} v ON c.id = v.challenge_id AND COALESCE(v.is_hidden, false) = false
     WHERE c.is_active = true
+      AND COALESCE(c.challenge_mode, CASE WHEN c.challenge_type = 'prize' THEN 'battle' ELSE 'trend' END) = 'trend'
       AND c.hashtags IS NOT NULL
       AND c.hashtags <> ''
     GROUP BY c.id
@@ -3347,7 +3364,7 @@ async function syncEmptyChallengesNow(limit = 30) {
   for (const row of emptyRes.rows) {
     const tag = row.hashtags.split(' ')[0].replace('#', '');
     if (!tag) continue;
-    await syncSingleChallenge({ id: row.id, title: row.title, hashtags: row.hashtags, tag, region: row.region, forceFill: true });
+    await syncSingleChallenge({ id: row.id, title: row.title, hashtags: row.hashtags, tag, region: row.region });
     synced++;
   }
 
@@ -3359,7 +3376,6 @@ async function searchYouTubeFallback(challenge, tag, acceptItem) {
     const result = await ytSearch(`#${tag} shorts`);
     const videos = (result.videos || []).slice(0, 12);
     const accepted = [];
-    const candidates = [];
 
     for (const item of videos) {
       if (!item.videoId || !item.url) continue;
@@ -3377,18 +3393,8 @@ async function searchYouTubeFallback(challenge, tag, acceptItem) {
         durationSeconds: item.seconds || item.duration || null
       };
 
-      candidates.push(video);
       if (acceptItem(video)) accepted.push(video);
       if (accepted.length >= 3) break;
-    }
-
-    if (accepted.length === 0 && challenge.forceFill) {
-      const bestEffort = candidates.slice(0, 3);
-      bestEffort.forEach((video) => { video.matchScore = 0; });
-      if (bestEffort.length > 0) {
-        console.log(`[YT-FALLBACK] #${tag}: best-effort filled ${bestEffort.length} YouTube result(s)`);
-      }
-      return bestEffort;
     }
 
     if (accepted.length > 0) {
@@ -3470,7 +3476,7 @@ async function syncSingleChallenge(challenge) {
     }
 
     if (merged.length > 0) {
-      const sortedVideos = merged
+      const sortedVideos = selectDiverseVideos(merged
         .map((video) => ({
           ...video,
           shortFormScore: video.shortFormScore ?? scoreShortFormPreference(video).score
@@ -3479,8 +3485,7 @@ async function syncSingleChallenge(challenge) {
           (b.shortFormScore - a.shortFormScore)
           || ((b.matchScore || 0) - (a.matchScore || 0))
           || ((b.viewCount || 0) - (a.viewCount || 0))
-        ))
-        .slice(0, 6);
+        )), 6, 2);
 
       for (const v of sortedVideos) {
         await pool.query(`INSERT INTO ${TABLE_VIDEOS} (id, challenge_id, platform, author, view_count, video_title, video_url, thumbnail_url, external_url, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP) ON CONFLICT (id) DO UPDATE SET view_count = EXCLUDED.view_count`, [v.id, v.challengeId, v.platform, v.author, v.viewCount, v.videoTitle, v.videoUrl, v.thumbnailUrl, v.externalUrl]);

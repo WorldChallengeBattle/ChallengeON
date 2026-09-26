@@ -1,6 +1,7 @@
 const assert = require('assert');
 const {
   findBestChallengeForVideo,
+  selectDiverseVideos,
   scoreShortFormPreference,
   scoreVideoForChallenge
 } = require('./challenge-matcher');
@@ -52,5 +53,15 @@ const longVideoPenalty = scoreShortFormPreference({
   duration: 600
 });
 assert.ok(longVideoPenalty.score < 0);
+
+const diverseVideos = selectDiverseVideos([
+  { id: 'i1', platform: 'instagram' },
+  { id: 'i2', platform: 'instagram' },
+  { id: 'i3', platform: 'instagram' },
+  { id: 't1', platform: 'tiktok' },
+  { id: 't2', platform: 'tiktok' },
+  { id: 'y1', platform: 'youtube' },
+], 6, 2);
+assert.deepStrictEqual(diverseVideos.map((video) => video.id), ['i1', 'i2', 't1', 't2', 'y1']);
 
 console.log('challenge-matcher tests passed');
