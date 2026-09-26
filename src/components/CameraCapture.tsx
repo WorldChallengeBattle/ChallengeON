@@ -46,6 +46,7 @@ type VideoUploadResult = {
 };
 
 const MAX_RECORDING_SECONDS = 180;
+const MAX_VIDEO_UPLOAD_BYTES = 28 * 1024 * 1024;
 
 const formatRecordTime = (seconds: number) => {
   const minutes = Math.floor(seconds / 60);
@@ -133,9 +134,12 @@ export default function CameraCapture({ onClose, onRecordingComplete, challengeT
         }
 
         // 4. Initialize MediaRecorder
-        const recorder = selectedType
-          ? new MediaRecorder(stream, { mimeType: selectedType })
-          : new MediaRecorder(stream);
+        const recorderOptions: MediaRecorderOptions = {
+          videoBitsPerSecond: 900_000,
+          audioBitsPerSecond: 96_000,
+          ...(selectedType ? { mimeType: selectedType } : {})
+        };
+        const recorder = new MediaRecorder(stream, recorderOptions);
         recorder.ondataavailable = (e) => {
           if (e.data.size > 0) chunksRef.current.push(e.data);
         };
@@ -242,6 +246,12 @@ export default function CameraCapture({ onClose, onRecordingComplete, challengeT
   };
 
   const saveToGallery = async (blob: Blob) => {
+    if (blob.size > MAX_VIDEO_UPLOAD_BYTES) {
+      prepareEditedVideoForFallback(blob);
+      setUploadError('Video must be smaller than 28 MB for cloud upload. Shorten it or record at a lower quality.');
+      return;
+    }
+
     setIsSaving(true);
     setUploadError('');
     prepareEditedVideoForFallback(blob);

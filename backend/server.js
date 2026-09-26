@@ -5,10 +5,24 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const admin = require('firebase-admin');
-const serviceAccount = require('./worldchallengebattle-firebase-adminsdk-fbsvc-1e9684a925.json');
+const { matchesCronSecret } = require('./cron-auth');
+
+function loadFirebaseServiceAccount() {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
+    return serviceAccount;
+  }
+
+  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
+    || path.join(__dirname, 'worldchallengebattle-firebase-adminsdk-fbsvc-1e9684a925.json');
+  return JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+}
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+  credential: admin.credential.cert(loadFirebaseServiceAccount())
 });
 const ytSearch = require('yt-search');
 const { ApifyClient } = require('apify-client');
@@ -105,12 +119,17 @@ const ADMIN_EDITABLE_SETTING_KEYS = new Set([
 ]);
 
 // Initialize PostgreSQL
-const pool = new Pool({
+const pool = new Pool(process.env.DATABASE_URL ? {
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false },
+  max: Math.max(1, parseInt(process.env.PGPOOL_MAX || '5', 10))
+} : {
   user: process.env.PGUSER || 'postgres',
   host: process.env.PGHOST || 'localhost',
   database: process.env.PGDATABASE || 'wcb_db',
   password: process.env.PGPASSWORD || 'password',
   port: process.env.PGPORT || 5432,
+  max: Math.max(1, parseInt(process.env.PGPOOL_MAX || '10', 10))
 });
 
 pool.on('error', (err) => {
@@ -327,9 +346,13 @@ async function initDb() {
         console.log('[DB] PostgreSQL Schema Verified/Initialized');
     } catch (err) {
         console.error('[!] PostgreSQL Init Error:', err.message);
+        throw err;
     }
 }
-const dbReady = initDb();
+let databaseReady = false;
+const dbReady = initDb().then(() => {
+  databaseReady = true;
+});
 
 async function tableExists(tableName) {
   const result = await pool.query(
@@ -377,8 +400,30 @@ async function migrateLegacyUnonSchema() {
 const client = new ApifyClient({ token: process.env.APIFY_API_TOKEN || 'DUMMY_TOKEN' });
 
 const app = express();
-app.use(cors());
+const corsOrigins = new Set(String(process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean));
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || corsOrigins.size === 0 || corsOrigins.has(origin)) return callback(null, true);
+    return callback(new Error('Origin is not allowed by CORS'));
+  }
+}));
 app.use(express.json());
+app.get('/health', (_req, res) => {
+  res.status(databaseReady ? 200 : 503).json({ status: databaseReady ? 'ok' : 'starting' });
+});
+
+function requireCronSecret(req, res, next) {
+  const expected = String(process.env.CRON_SECRET || '');
+  const authorization = String(req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  const supplied = String(req.get('x-cron-secret') || authorization);
+
+  if (!expected) return res.status(503).json({ error: 'Scheduled jobs are not configured.' });
+  if (!matchesCronSecret(expected, supplied)) return res.status(401).json({ error: 'Invalid scheduled job credentials.' });
+  return next();
+}
 
 const { SiweMessage, generateNonce } = require('siwe');
 const { JsonRpcProvider } = require('ethers');
@@ -3442,12 +3487,46 @@ async function syncSingleChallenge(challenge) {
   }
 }
 
-app.get('/api/sync-now', (req, res) => {
-  startBackgroundScraper();
-  res.json({ success: true });
+app.post('/api/internal/jobs/:job', requireCronSecret, async (req, res) => {
+  try {
+    if (req.params.job === 'trend-sync') {
+      await startBackgroundScraper();
+      return res.json({ success: true, job: req.params.job });
+    }
+
+    if (req.params.job === 'video-maintenance') {
+      const result = await runVideoMaintenance({ limit: req.body?.limit });
+      return res.json({ success: true, job: req.params.job, result });
+    }
+
+    if (req.params.job === 'unon-sync') {
+      if (isUnonIndexing) return res.status(409).json({ error: 'UNON sync is already running.' });
+      isUnonIndexing = true;
+      try {
+        const result = await runUnonIndexSync({ reason: 'scheduled' });
+        return res.json({ success: true, job: req.params.job, result });
+      } finally {
+        isUnonIndexing = false;
+      }
+    }
+
+    return res.status(404).json({ error: 'Unknown scheduled job.' });
+  } catch (err) {
+    console.error(`[SCHEDULED-JOB] ${req.params.job} failed:`, err.message);
+    return res.status(500).json({ error: err.message });
+  }
 });
 
-app.post('/api/sync-empty-now', async (req, res) => {
+app.get('/api/sync-now', requireCronSecret, async (req, res) => {
+  try {
+    await startBackgroundScraper();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sync-empty-now', requireCronSecret, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.body?.limit, 10) || 30, 60);
     const result = await syncEmptyChallengesNow(limit);
@@ -3457,7 +3536,7 @@ app.post('/api/sync-empty-now', async (req, res) => {
   }
 });
 
-app.post('/api/videos/maintenance', async (req, res) => {
+app.post('/api/videos/maintenance', requireCronSecret, async (req, res) => {
   try {
     const result = await runVideoMaintenance({
       limit: req.body?.limit,
@@ -4855,20 +4934,31 @@ app.use('/api/admin', adminRouter);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`[SERVER] Backend running on ${PORT}`));
-dbReady
-  .then(() => scheduleUnonIndexer())
-  .catch((err) => console.error('[UNON-INDEX] Scheduler failed:', err.message));
-startBackgroundScraper();
-setInterval(startBackgroundScraper, 3600000);
 
-if (process.env.VIDEO_MAINTENANCE_ENABLED !== 'false') {
-  setTimeout(() => {
-    runVideoMaintenance().catch((err) => console.error('[VIDEO-MAINTENANCE] Scheduled run failed:', err.message));
-  }, VIDEO_MAINTENANCE_INITIAL_DELAY_MS);
+function scheduleInProcessJobs() {
+  scheduleUnonIndexer();
+  void startBackgroundScraper();
+  setInterval(() => void startBackgroundScraper(), 3600000);
 
-  setInterval(() => {
-    runVideoMaintenance().catch((err) => console.error('[VIDEO-MAINTENANCE] Scheduled run failed:', err.message));
-  }, VIDEO_MAINTENANCE_INTERVAL_MS);
+  if (process.env.VIDEO_MAINTENANCE_ENABLED !== 'false') {
+    setTimeout(() => {
+      runVideoMaintenance().catch((err) => console.error('[VIDEO-MAINTENANCE] Scheduled run failed:', err.message));
+    }, VIDEO_MAINTENANCE_INITIAL_DELAY_MS);
 
-  console.log(`[VIDEO-MAINTENANCE] Scheduled every ${VIDEO_MAINTENANCE_INTERVAL_MS / 3600000} hours`);
+    setInterval(() => {
+      runVideoMaintenance().catch((err) => console.error('[VIDEO-MAINTENANCE] Scheduled run failed:', err.message));
+    }, VIDEO_MAINTENANCE_INTERVAL_MS);
+
+    console.log(`[VIDEO-MAINTENANCE] Scheduled every ${VIDEO_MAINTENANCE_INTERVAL_MS / 3600000} hours`);
+  }
 }
+
+dbReady
+  .then(() => {
+    if (process.env.ENABLE_IN_PROCESS_JOBS === 'false') {
+      console.log('[SCHEDULED-JOB] In-process schedules disabled; waiting for protected external triggers.');
+      return;
+    }
+    scheduleInProcessJobs();
+  })
+  .catch((err) => console.error('[STARTUP] Database initialization failed:', err.message));

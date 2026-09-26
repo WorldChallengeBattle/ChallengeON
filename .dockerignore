@@ -1,0 +1,17 @@
+.git
+.github
+.env
+.env.*
+**/.env
+**/.env.*
+**/node_modules
+**/dist
+GoodOn
+contracts
+docs
+public
+src
+tmp
+backend/uploads
+backend/*firebase-adminsdk*.json
+backend/*.log

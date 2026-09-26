@@ -79,3 +79,9 @@ node backend/region-classifier.test.js
 ```
 
 The UNON contract project also passes its Hardhat test suite with the prize manager included.
+
+## Cloud Deployment
+
+The selected deployment layout uses GitHub, Vercel for the Vite frontend, Supabase PostgreSQL, and Google Cloud Run for the Express API and YouTube upload path.
+
+See [`docs/CLOUD_DEPLOYMENT.md`](docs/CLOUD_DEPLOYMENT.md) for secrets, service settings, scheduled jobs, verification, and free-tier constraints.
