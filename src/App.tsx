@@ -27,7 +27,8 @@ import {
   CheckCircle2,
   UploadCloud,
   Shield,
-  MinusCircle
+  MinusCircle,
+  Languages
 } from 'lucide-react';
 import CameraCapture from './components/CameraCapture';
 import AdminPanel from './components/AdminPanel';
@@ -53,6 +54,7 @@ import { db } from './firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { createPublicClient, encodeFunctionData, formatUnits, http, parseUnits } from 'viem';
 import { worldchain, worldchainSepolia } from 'viem/chains';
+import { SUPPORTED_LANGUAGES, useI18n } from './i18n';
 import './index.css';
 
 const getWorldChain = (chainId: number) => (chainId === 480 ? worldchain : worldchainSepolia);
@@ -343,6 +345,7 @@ const EDITORS_CHOICE_TAGS = [
 ];
 
 function App() {
+  const { language, setLanguage, t } = useI18n();
   const { currentUser, userData, refreshUserData } = useAuth();
   const [chainConfig, setChainConfig] = useState<PublicChainConfig>(fallbackChainConfig);
   const [chainConfigError, setChainConfigError] = useState<string | null>(null);
@@ -363,6 +366,7 @@ function App() {
 
   const [currentTab, setCurrentTab] = useState<'trend' | 'battle' | 'now' | 'create' | 'rankings' | 'profile'>('trend');
   const [isRegionOpen, setIsRegionOpen] = useState(false);
+  const [isLanguageOpen, setIsLanguageOpen] = useState(false);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeRegion, setActiveRegion] = useState(REGIONS[0]);
@@ -3071,12 +3075,12 @@ function App() {
             >
               <div className="loading-spinner" style={{ width: '40px', height: '40px', borderTopColor: 'var(--primary)' }} />
             </motion.div>
-            <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '12px' }}>Authenticating in World App</h2>
+            <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '12px' }}>{t('authTitle')}</h2>
             <p style={{ color: '#888', marginBottom: '16px', lineHeight: '1.6' }}>
-              World ID verification starts automatically when this mini app opens. Challenge creation will unlock as soon as authentication finishes.
+              {t('authBody')}
             </p>
             <p style={{ color: '#666', margin: 0, fontSize: '13px' }}>
-              If you opened this outside World App, return to the mini app and launch it there.
+              {t('authOutside')}
             </p>
           </div>
         </div>
@@ -3106,9 +3110,9 @@ function App() {
             >
               <Zap size={32} color="#fff" />
             </motion.div>
-            <motion.h1 className="page-title" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: '10px' }}>Forge Your Arena</motion.h1>
+            <motion.h1 className="page-title" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: '10px' }}>{t('createTitle')}</motion.h1>
             <motion.p className="page-subtitle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}>
-              Set the hashtags, define your territory, and ignite the next global storm.
+              {t('createSummary')}
             </motion.p>
           </div>
 
@@ -3118,7 +3122,7 @@ function App() {
               className={createMode === 'standard' ? 'active' : ''}
               onClick={() => setCreateMode('standard')}
             >
-              Standard
+              {t('standard')}
             </button>
             <button
               type="button"
@@ -3130,7 +3134,7 @@ function App() {
               disabled={!hasPrizeCreatorEligibility || isCreating}
               title={!hasPrizeCreatorEligibility ? 'PLATINUM badge requires 10,000+ UNON.' : isAdminUser ? 'Admin prize battle creation enabled' : 'Create a UNON prize battle'}
             >
-              Prize UNON
+              {t('prize')}
             </button>
           </div>
 
@@ -3151,13 +3155,13 @@ function App() {
           <form className="create-form" onSubmit={handleCreateChallenge}>
             <div className="form-group" style={{ marginBottom: '20px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--primary)', marginBottom: '8px', fontWeight: '800' }}>
-                <Trophy size={14} /> ARENA NAME
+                <Trophy size={14} /> {t('arenaName')}
               </label>
               <input 
                 type="text" 
                 className="form-input" 
                 style={{ background: 'rgba(255,255,255,0.05)', height: '56px', borderRadius: '16px', fontSize: '16px' }}
-                placeholder="e.g. Neon Dance Battle" 
+                placeholder={t('arenaPlaceholder')}
                 value={createForm.title} 
                 onChange={e => setCreateForm({ ...createForm, title: e.target.value })} 
                 disabled={isCreating} 
@@ -3166,7 +3170,7 @@ function App() {
 
             <div className="form-group" style={{ marginBottom: '20px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--secondary)', marginBottom: '8px', fontWeight: '800' }}>
-                <Hash size={14} /> MAIN HASHTAG
+                <Hash size={14} /> {t('mainHashtag')}
               </label>
               <input 
                 type="text" 
@@ -3181,7 +3185,7 @@ function App() {
 
             <div className="form-group" style={{ marginBottom: '30px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#00ffff', marginBottom: '8px', fontWeight: '800' }}>
-                <MapPin size={14} /> TERRITORY
+                <MapPin size={14} /> {t('territory')}
               </label>
               <select 
                 className="form-input" 
@@ -3388,10 +3392,10 @@ function App() {
             >
               {isCreating ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-                  <TrendingUp size={20} className="spinning" /> LAUNCHING...
+                  <TrendingUp size={20} className="spinning" /> {t('creating')}
                 </div>
               ) : (
-                createMode === 'prize' ? 'ESCROW & LAUNCH PRIZE' : 'IGNITE CHALLENGE'
+                createMode === 'prize' ? t('prize') : t('ignite')
               )}
             </motion.button>
           </form>
@@ -3599,21 +3603,21 @@ function App() {
     const copy = {
       trend: {
         title: 'Trend ON',
-        kicker: 'AI-curated daily trends',
-        summary: 'Fresh global trends selected for people who want to watch, learn, and join fast.',
-        empty: 'No Trend ON challenges are ready yet.'
+        kicker: t('trendKicker'),
+        summary: t('trendSummary'),
+        empty: t('trendEmpty')
       },
       battle: {
         title: 'Battle ON',
-        kicker: 'Creator entries and Platinum challenges',
-        summary: 'A shared space where user videos, Gold support, follows, rankings, and Platinum+ prize challenges live together.',
-        empty: 'No Battle ON challenges are open yet.'
+        kicker: t('battleKicker'),
+        summary: t('battleSummary'),
+        empty: t('battleEmpty')
       },
       now: {
         title: 'Now ON',
-        kicker: 'Official missions',
-        summary: 'Complete operator-selected missions and earn U&On rewards. Start with Say Hello.',
-        empty: 'No Now ON missions are open yet.'
+        kicker: t('nowKicker'),
+        summary: t('nowSummary'),
+        empty: t('nowEmpty')
       }
     }[mode];
     const items = getOnChallenges(mode);
@@ -3628,12 +3632,12 @@ function App() {
           </div>
           {mode === 'now' && (
             <button type="button" className="on-primary-action" onClick={() => setCurrentTab('create')}>
-              <UploadCloud size={18} /> Say Hello
+              <UploadCloud size={18} /> {t('sayHello')}
             </button>
           )}
           {mode === 'battle' && (
             <button type="button" className="on-primary-action" onClick={() => setCurrentTab('create')}>
-              <PlusCircle size={18} /> Create
+              <PlusCircle size={18} /> {t('navCreate')}
             </button>
           )}
         </section>
@@ -3641,10 +3645,10 @@ function App() {
         {mode === 'now' && (
           <section className="on-tutorial">
             {[
-              ['Welcome Bonus', 'Claim 100 UNON until 2026-12-31'],
-              ['Say Hello', 'Upload a greeting video and claim 2 UNON'],
-              ['Gold Heart', 'Support creators with UNON or WLD'],
-              ['Ranking', 'Check monthly donation standings']
+              [t('welcomeBonus'), t('welcomeBonusBody')],
+              [t('sayHello'), t('sayHelloBody')],
+              [t('goldHeart'), t('goldHeartBody')],
+              [t('navRanking'), t('rankingBody')]
             ].map(([title, body]) => (
               <div key={title}>
                 <CheckCircle2 size={16} />
@@ -3668,15 +3672,15 @@ function App() {
     <div className="on-page">
       <section className="on-hero compact">
         <div>
-          <span>Donation leaderboard</span>
-          <h1>Ranking</h1>
-          <p>UNON and WLD Gold heart support, grouped by month, quarter, and year.</p>
+          <span>{t('rankingKicker')}</span>
+          <h1>{t('navRanking')}</h1>
+          <p>{t('rankingSummary')}</p>
         </div>
       </section>
       <div className="ranking-controls">
         {(['month', 'quarter', 'year'] as const).map(period => (
           <button key={period} className={rankingPeriod === period ? 'active' : ''} onClick={() => setRankingPeriod(period)}>
-            {period}
+            {t(period)}
           </button>
         ))}
         {(['all', 'UNON', 'WLD'] as const).map(token => (
@@ -3691,12 +3695,12 @@ function App() {
             <div className="ranking-position">{index + 1}</div>
             <div>
               <strong>{row.creator}</strong>
-              <span>{row.support_count} supports</span>
+              <span>{row.support_count} {t('supports')}</span>
             </div>
             <div className="ranking-amount">{Number(row.donated_amount || 0).toFixed(2)} {row.token_symbol}</div>
           </div>
         )) : (
-          <div className="on-empty">No donation ranking data for this period yet.</div>
+          <div className="on-empty">{t('rankingEmpty')}</div>
         )}
       </div>
     </div>
@@ -3949,14 +3953,54 @@ function App() {
         <div className="logo-container" onClick={() => setCurrentTab('trend')}>
           <div className="logo-icon">U</div>
         </div>
-        <div className="search-bar-container"><Search size={16} className="search-icon" /><input type="text" placeholder="Search challenges..." className="search-input" /></div>
+        <div className="search-bar-container"><Search size={16} className="search-icon" /><input type="text" placeholder={t('search')} className="search-input" /></div>
         <div className="header-right-group">
           <div className="user-points"><Flame size={14} color="#00ffff" /><span>{userData?.points || 0}</span></div>
-          <button type="button" className="profile-shortcut" onClick={() => setCurrentTab('profile')} aria-label="Open profile">
+          <button type="button" className="profile-shortcut" onClick={() => setCurrentTab('profile')} aria-label={t('openProfile')}>
             <User size={16} />
           </button>
+          <div className="language-selector-container">
+            <button
+              type="button"
+              className={`language-selector-trigger ${isLanguageOpen ? 'open' : ''}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsLanguageOpen(!isLanguageOpen);
+                setIsRegionOpen(false);
+              }}
+              aria-label={t('selectLanguage')}
+              title={t('selectLanguage')}
+            >
+              <Languages size={16} />
+            </button>
+            <AnimatePresence>
+              {isLanguageOpen && (
+                <motion.div
+                  className="language-dropdown-list"
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                >
+                  {SUPPORTED_LANGUAGES.map(option => (
+                    <button
+                      type="button"
+                      key={option.code}
+                      className={language === option.code ? 'selected' : ''}
+                      onClick={() => {
+                        setLanguage(option.code);
+                        setIsLanguageOpen(false);
+                      }}
+                    >
+                      <span>{option.label}</span>
+                      <small>{option.code.toUpperCase()}</small>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <div className="region-selector-container">
-            <motion.div className={`region-selector-trigger ${isRegionOpen ? 'open' : ''}`} onClick={(e) => { e.stopPropagation(); setIsRegionOpen(!isRegionOpen); }} whileTap={{ scale: 0.95 }}>
+            <motion.div className={`region-selector-trigger ${isRegionOpen ? 'open' : ''}`} onClick={(e) => { e.stopPropagation(); setIsRegionOpen(!isRegionOpen); setIsLanguageOpen(false); }} whileTap={{ scale: 0.95 }}>
               <MapPin size={12} className="region-icon" /><span className="region-name" style={{ fontSize: '12px' }}>{activeRegion === 'Southeast Asia' ? 'SEA' : (activeRegion.split(' ').pop() || activeRegion)}</span><ChevronDown size={12} className={`chevron-icon ${isRegionOpen ? 'rotate' : ''}`} />
             </motion.div>
             <AnimatePresence>
@@ -4084,19 +4128,19 @@ function App() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <Settings size={20} color="var(--secondary)" />
-                  <h2 style={{ fontSize: '20px', color: '#fff', fontWeight: '900' }}>ARENA SETTINGS</h2>
+                  <h2 style={{ fontSize: '20px', color: '#fff', fontWeight: '900' }}>{t('settings')}</h2>
                 </div>
                 <button onClick={() => setShowSettingsModal(false)} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#fff', width: '36px', height: '36px', borderRadius: '18px' }}><X size={20} /></button>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <h4 style={{ fontSize: '14px', marginBottom: '4px', color: '#fff' }}>Profile Visibility</h4>
-                  <p style={{ fontSize: '12px', color: '#888' }}>Your stats are visible to everyone on the leaderboard.</p>
+                  <h4 style={{ fontSize: '14px', marginBottom: '4px', color: '#fff' }}>{t('profileVisibility')}</h4>
+                  <p style={{ fontSize: '12px', color: '#888' }}>{t('profileVisibilityBody')}</p>
                 </div>
                 <div style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <h4 style={{ fontSize: '14px', marginBottom: '4px', color: '#fff' }}>Territory Preference</h4>
-                  <p style={{ fontSize: '12px', color: '#888' }}>Currently optimized for {activeRegion}.</p>
+                  <h4 style={{ fontSize: '14px', marginBottom: '4px', color: '#fff' }}>{t('territoryPreference')}</h4>
+                  <p style={{ fontSize: '12px', color: '#888' }}>{t('optimizedFor', { region: activeRegion })}</p>
                 </div>
                 <div style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', marginTop: '20px' }}>
                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--secondary)' }}>
@@ -4246,11 +4290,11 @@ function App() {
       </AnimatePresence>
 
       <nav className="bottom-nav">
-        <div className={`nav-item ${currentTab === 'trend' ? 'active' : ''}`} onClick={() => { setCurrentTab('trend'); }}><TrendingUp size={22} className="nav-icon" /><span className="nav-label">Trend ON</span></div>
-        <div className={`nav-item ${currentTab === 'battle' ? 'active' : ''}`} onClick={() => { setCurrentTab('battle'); }}><Trophy size={22} className="nav-icon" /><span className="nav-label">Battle ON</span></div>
-        <div className="nav-item" onClick={() => { setCurrentTab('create'); }}><div className={`logo-icon ${currentTab === 'create' ? 'active' : ''}`} style={{ width: '40px', height: '40px' }}><PlusCircle size={28} /></div><span className="nav-label">Create</span></div>
-        <div className={`nav-item ${currentTab === 'now' ? 'active' : ''}`} onClick={() => { setCurrentTab('now'); }}><Zap size={22} className="nav-icon" /><span className="nav-label">Now ON</span></div>
-        <div className={`nav-item ${currentTab === 'rankings' ? 'active' : ''}`} onClick={() => { setCurrentTab('rankings'); }}><Crown size={22} className="nav-icon" /><span className="nav-label">Ranking</span></div>
+        <div className={`nav-item ${currentTab === 'trend' ? 'active' : ''}`} onClick={() => { setCurrentTab('trend'); }}><TrendingUp size={22} className="nav-icon" /><span className="nav-label">{t('navTrend')}</span></div>
+        <div className={`nav-item ${currentTab === 'battle' ? 'active' : ''}`} onClick={() => { setCurrentTab('battle'); }}><Trophy size={22} className="nav-icon" /><span className="nav-label">{t('navBattle')}</span></div>
+        <div className="nav-item" onClick={() => { setCurrentTab('create'); }}><div className={`logo-icon ${currentTab === 'create' ? 'active' : ''}`} style={{ width: '40px', height: '40px' }}><PlusCircle size={28} /></div><span className="nav-label">{t('navCreate')}</span></div>
+        <div className={`nav-item ${currentTab === 'now' ? 'active' : ''}`} onClick={() => { setCurrentTab('now'); }}><Zap size={22} className="nav-icon" /><span className="nav-label">{t('navNow')}</span></div>
+        <div className={`nav-item ${currentTab === 'rankings' ? 'active' : ''}`} onClick={() => { setCurrentTab('rankings'); }}><Crown size={22} className="nav-icon" /><span className="nav-label">{t('navRanking')}</span></div>
       </nav>
 
       <input
@@ -4309,19 +4353,19 @@ function App() {
             style={{ padding: '24px', background: 'var(--surface)', borderRadius: '28px 28px 0 0', borderTop: '1px solid rgba(103,232,249,0.35)' }}
           >
             <div className="modal-header" style={{ padding: 0, marginBottom: '16px' }}>
-              <h2>Select Saved Video</h2>
+              <h2>{t('uploadTitle')}</h2>
               <button
                 onClick={() => setShowUploadGuidanceModal(false)}
                 style={{ background: 'none', border: 'none', color: '#fff' }}
-                aria-label="Close upload guidance"
+                aria-label={t('closeUpload')}
               >
                 <X size={24} />
               </button>
             </div>
             <div style={{ display: 'grid', gap: '14px' }}>
               <div style={{ padding: '14px 16px', borderRadius: '14px', background: 'rgba(103,232,249,0.08)', border: '1px solid rgba(103,232,249,0.18)', color: '#dffbff', lineHeight: 1.5 }}>
-                <strong style={{ display: 'block', color: '#67e8f9', marginBottom: '6px' }}>다음 화면에서 카메라는 선택하지 마세요.</strong>
-                저장된 영상을 업로드하려면 갤러리, 파일, 사진 앱 또는 동영상 파일을 선택해주세요.
+                <strong style={{ display: 'block', color: '#67e8f9', marginBottom: '6px' }}>{t('uploadWarning')}</strong>
+                {t('uploadHelp')}
               </div>
               <button
                 type="button"
@@ -4333,7 +4377,7 @@ function App() {
                 disabled={isPreparingCamera}
                 style={{ width: '100%', minHeight: '54px', borderRadius: '16px', fontWeight: 900 }}
               >
-                파일 선택 계속
+                {t('continueFile')}
               </button>
               <button
                 type="button"
@@ -4341,7 +4385,7 @@ function App() {
                 onClick={() => setShowUploadGuidanceModal(false)}
                 style={{ width: '100%', minHeight: '48px', borderRadius: '14px' }}
               >
-                취소
+                {t('cancel')}
               </button>
             </div>
           </motion.div>

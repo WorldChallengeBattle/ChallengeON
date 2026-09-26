@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './contexts/AuthContext'
 import { MiniKit } from '@worldcoin/minikit-js'
+import { LanguageProvider } from './i18n'
 
 const miniKitAppId = import.meta.env.VITE_MINIKIT_APP_ID || import.meta.env.VITE_WORLD_APP_ID || undefined;
 
@@ -22,9 +23,11 @@ const rootElement = document.getElementById('root');
 if (rootElement) {
   createRoot(rootElement).render(
     <StrictMode>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </LanguageProvider>
     </StrictMode>,
   )
 }
