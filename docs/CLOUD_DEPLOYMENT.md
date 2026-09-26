@@ -18,7 +18,8 @@ The initial deployment uses World Chain Sepolia. Do not switch to mainnet until 
 4. Restore that dump to the Supabase session pooler connection with `pg_restore`.
 5. Compare source and target row counts before allowing writes to the new database.
 6. Save the Supabase URI as Cloud Run's `DATABASE_URL` secret.
-7. Include `sslmode=require` in the URI.
+7. Do not append `sslmode` to the URI. The backend supplies its own TLS options;
+   URI-level SSL parameters override those options in `pg`.
 
 Follow Supabase's official **Migrate from Postgres to Supabase** dump/restore procedure. Do not migrate PostgreSQL roles or ownership. The backend runs `backend/schema.sql` and its idempotent migrations on startup after the existing data is restored. The free database limit is 500 MB, so monitor table and index size.
 
@@ -53,6 +54,7 @@ Required configuration:
 DEPLOY_NETWORK=worldchainSepolia
 UNON_NETWORK_CONFIG_PATH=../config/unon-networks.json
 ENABLE_IN_PROCESS_JOBS=false
+ENABLE_STARTUP_DATA_MAINTENANCE=false
 VIDEO_MAINTENANCE_ENABLED=true
 PGPOOL_MAX=5
 CORS_ORIGINS=https://<vercel-production-domain>

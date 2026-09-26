@@ -140,6 +140,9 @@ pool.on('error', (err) => {
 
 async function initDb() {
     try {
+        const startupDataMaintenanceEnabled = String(
+          process.env.ENABLE_STARTUP_DATA_MAINTENANCE || 'true'
+        ).toLowerCase() === 'true';
         await migrateLegacyUnonSchema();
         const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
         await pool.query(schema);
@@ -223,35 +226,39 @@ async function initDb() {
         // Web3 Fan Support
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS wallet_address TEXT UNIQUE`);
         
-        // Cleanup: Time-based removal of inactive challenges
-        // Crawler-created: 7 days, no videos, no likes
-        const crawlerCleanup = await pool.query(`
-          DELETE FROM ${TABLE_CHALLENGES} 
-          WHERE id IN (
-            SELECT c.id FROM ${TABLE_CHALLENGES} c 
-            LEFT JOIN ${TABLE_VIDEOS} v ON c.id = v.challenge_id AND COALESCE(v.is_hidden, false) = false
-            WHERE c.created_by_uid IS NULL
-              AND c.created_at < NOW() - INTERVAL '7 days'
-              AND COALESCE(c.likes, 0) = 0
-            GROUP BY c.id 
-            HAVING COUNT(v.id) = 0
-          )
-        `);
-        // User-created: 90 days, no videos, no likes, no participants
-        const userCleanup = await pool.query(`
-          DELETE FROM ${TABLE_CHALLENGES} 
-          WHERE id IN (
-            SELECT c.id FROM ${TABLE_CHALLENGES} c 
-            LEFT JOIN ${TABLE_VIDEOS} v ON c.id = v.challenge_id AND COALESCE(v.is_hidden, false) = false
-            WHERE c.created_by_uid IS NOT NULL
-              AND c.created_at < NOW() - INTERVAL '90 days'
-              AND COALESCE(c.likes, 0) = 0
-              AND COALESCE(c.participants, 0) = 0
-            GROUP BY c.id 
-            HAVING COUNT(v.id) = 0
-          )
-        `);
-        console.log(`[CLEANUP] ${crawlerCleanup.rowCount} crawler (7d) + ${userCleanup.rowCount} user (30d) inactive challenges removed`);
+        if (startupDataMaintenanceEnabled) {
+          // Cleanup: Time-based removal of inactive challenges
+          // Crawler-created: 7 days, no videos, no likes
+          const crawlerCleanup = await pool.query(`
+            DELETE FROM ${TABLE_CHALLENGES}
+            WHERE id IN (
+              SELECT c.id FROM ${TABLE_CHALLENGES} c
+              LEFT JOIN ${TABLE_VIDEOS} v ON c.id = v.challenge_id AND COALESCE(v.is_hidden, false) = false
+              WHERE c.created_by_uid IS NULL
+                AND c.created_at < NOW() - INTERVAL '7 days'
+                AND COALESCE(c.likes, 0) = 0
+              GROUP BY c.id
+              HAVING COUNT(v.id) = 0
+            )
+          `);
+          // User-created: 90 days, no videos, no likes, no participants
+          const userCleanup = await pool.query(`
+            DELETE FROM ${TABLE_CHALLENGES}
+            WHERE id IN (
+              SELECT c.id FROM ${TABLE_CHALLENGES} c
+              LEFT JOIN ${TABLE_VIDEOS} v ON c.id = v.challenge_id AND COALESCE(v.is_hidden, false) = false
+              WHERE c.created_by_uid IS NOT NULL
+                AND c.created_at < NOW() - INTERVAL '90 days'
+                AND COALESCE(c.likes, 0) = 0
+                AND COALESCE(c.participants, 0) = 0
+              GROUP BY c.id
+              HAVING COUNT(v.id) = 0
+            )
+          `);
+          console.log(`[CLEANUP] ${crawlerCleanup.rowCount} crawler (7d) + ${userCleanup.rowCount} user (90d) inactive challenges removed`);
+        } else {
+          console.log('[STARTUP] Data cleanup and seed maintenance disabled.');
+        }
 
         // Create votes tracking table
         await pool.query(`
@@ -337,12 +344,10 @@ async function initDb() {
           )
         `);
 
-        // Reset all likes/dislikes to 0
-        console.log('[VOTES] All likes/dislikes reset to 0');
-
-        // Seed Mar 2026 Trend Insight Report Challenges
-        await seedInitialChallenges();
-        await seedAnnouncements();
+        if (startupDataMaintenanceEnabled) {
+          await seedInitialChallenges();
+          await seedAnnouncements();
+        }
         
         console.log('[DB] PostgreSQL Schema Verified/Initialized');
     } catch (err) {
