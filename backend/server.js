@@ -515,7 +515,7 @@ async function logAdminAction(req, action, entityType, entityId = null, details 
 const adminRouter = express.Router();
 adminRouter.use(requireAuthenticatedUser, requireAdmin);
 
-// World Chain RPC Provider. Test/staging defaults to World Chain Sepolia.
+// World Chain RPC provider. Production defaults to World Chain mainnet.
 const WORLD_CHAIN_RPC = UNON_NETWORK_CONFIG.rpcUrl;
 const provider = new JsonRpcProvider(WORLD_CHAIN_RPC, {
     chainId: WORLD_CHAIN_CHAIN_ID,

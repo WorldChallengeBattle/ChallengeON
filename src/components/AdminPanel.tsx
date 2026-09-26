@@ -788,7 +788,7 @@ export default function AdminPanel({ currentUser, onClose }: AdminPanelProps) {
           <>
             <div className="admin-unon-hero">
               <div className="admin-unon-hero-copy">
-                <span>{unonReport.network?.label || 'World Chain Sepolia'} #{unonReport.network?.latestBlock || '-'}</span>
+                <span>{unonReport.network?.label || 'World Chain'} #{unonReport.network?.latestBlock || '-'}</span>
                 <h3>{formatTokenAmount(Number(unonReport.token?.totalSupplyNumber || 0))} total supply</h3>
                 <p>
                   Indexed blocks {unonReport.network?.scanFromBlock?.toLocaleString?.() || unonReport.network?.scanFromBlock} - {unonReport.network?.scanToBlock?.toLocaleString?.() || unonReport.network?.scanToBlock}
@@ -928,7 +928,7 @@ export default function AdminPanel({ currentUser, onClose }: AdminPanelProps) {
                   <div><span>Name</span><strong>{unonReport.token?.name || 'U&On'}</strong></div>
                   <div><span>Symbol</span><strong>{unonReport.token?.symbol || 'UNON'}</strong></div>
                   <div><span>Decimals</span><strong>{unonReport.token?.decimals ?? 18}</strong></div>
-                  <div><span>Chain ID</span><strong>{unonReport.network?.chainId || 4801}</strong></div>
+                  <div><span>Chain ID</span><strong>{unonReport.network?.chainId || 480}</strong></div>
                   <div><span>Indexed Blocks</span><strong>{formatCompactNumber(Number(unonReport.network?.scannedBlocks || 0))} blocks</strong></div>
                   <div><span>Known Ops Wallets</span><strong>{unonReport.config?.trackedWalletsConfigured || 0}</strong></div>
                   <div><span>Welcome Claims</span><strong>{onboardingRewards?.claimedCount ?? '-'}</strong></div>

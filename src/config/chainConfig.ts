@@ -39,7 +39,7 @@ export type PublicChainConfig = {
   features?: Record<string, boolean>;
 };
 
-const envChainId = Number(import.meta.env.VITE_WORLD_CHAIN_ID || '4801');
+const envChainId = Number(import.meta.env.VITE_WORLD_CHAIN_ID || '480');
 
 export const fallbackChainConfig: PublicChainConfig = {
   networkKey: envChainId === 480 ? 'worldchain' : 'worldchainSepolia',

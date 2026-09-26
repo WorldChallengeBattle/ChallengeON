@@ -150,7 +150,7 @@ function loadNetworkConfig() {
     normalizeNetworkName(process.env.DEPLOY_NETWORK) ||
     networkFromChainId(process.env.WORLD_CHAIN_CHAIN_ID || process.env.UNON_CHAIN_ID) ||
     root.defaultNetwork ||
-    'worldchainSepolia';
+    'worldchain';
 
   const rawNetwork = root.networks?.[selectedNetwork];
   if (!rawNetwork) {

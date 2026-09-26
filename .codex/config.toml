@@ -1,0 +1,6 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+[mcp_servers.world-developer-portal]
+url = "https://developer.world.org/api/mcp"
+bearer_token_env_var = "WORLD_DEVELOPER_API_KEY"
+default_tools_approval_mode = "prompt"

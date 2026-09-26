@@ -8,7 +8,7 @@ ChallengeON uses the following deployment layout:
 - Google Cloud Run: Express API, YouTube uploads, and scheduled jobs
 - Firebase: existing user authentication
 
-The initial deployment uses World Chain Sepolia. Do not switch to mainnet until the complete upload, authentication, signature, and prize flows pass end-to-end testing.
+The production deployment uses World Chain mainnet. Sepolia remains available only for explicit isolated testing.
 
 ## 1. Supabase PostgreSQL
 
@@ -51,7 +51,7 @@ local development and emergency configuration.
 Required configuration:
 
 ```env
-DEPLOY_NETWORK=worldchainSepolia
+DEPLOY_NETWORK=worldchain
 UNON_NETWORK_CONFIG_PATH=../config/unon-networks.json
 ENABLE_IN_PROCESS_JOBS=false
 ENABLE_STARTUP_DATA_MAINTENANCE=false
@@ -90,7 +90,7 @@ Set these build environment variables using the existing frontend `.env` values:
 
 - All `VITE_FIREBASE_*` values
 - `VITE_MINIKIT_APP_ID`
-- `VITE_WORLD_CHAIN_ID=4801`
+- `VITE_WORLD_CHAIN_ID=480`
 - `VITE_API_BASE_URL=https://<cloud-run-host>`
 
 The checked-in `vercel.json` provides SPA deep-link routing. Do not put backend or signer secrets in Vercel variables prefixed with `VITE_`; those values are public in the browser bundle.
@@ -102,7 +102,7 @@ The checked-in `vercel.json` provides SPA deep-link routing. Do not put backend 
 3. Sign in through Firebase and verify admin access separately.
 4. Upload a video smaller than 28 MB and confirm it appears on YouTube and in PostgreSQL.
 5. Invoke each scheduled endpoint once and inspect the API and Supabase Cron logs.
-6. Verify the World App Sepolia transaction flow before considering mainnet.
+6. Verify World App authentication and transaction confirmation on World Chain mainnet with a controlled low-value account.
 
 ## Free-tier constraints
 

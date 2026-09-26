@@ -18,14 +18,14 @@ Prize challenges are available for PLATINUM and higher UNON stakers.
 
 - PLATINUM threshold: `10,000 UNON` staked
 - Active challenge lock: `10,000 UNON` reserved per open challenge until settlement/refund
-- Test network: World Chain Sepolia, chain id `4801`
 - Production network: World Chain, chain id `480`
+- Explicit test network: World Chain Sepolia, chain id `4801`
 - Contract addresses: loaded from backend `GET /api/chain-config`
 - Canonical address book: `config/unon-networks.json`
 - Vote cost: `1 UNON` per video vote
 - Operations fee: `3%` from prize pools and vote pools
 
-Note: existing mainnet addresses are historical production deployments. Local testing now defaults to World Chain Sepolia and must use fresh Sepolia contract addresses. Because the old token was deployed before the final `U&On` naming decision, its on-chain ERC-20 `name()` may remain `Unon` until a fresh token deployment is made.
+Note: ChallengeON defaults to the existing World Chain mainnet deployments. Sepolia is available only when explicitly selected for isolated testing. Because the old token was deployed before the final `U&On` naming decision, its on-chain ERC-20 `name()` may remain `Unon` until a fresh token deployment is made.
 
 ## Prize Challenge Flow
 
@@ -45,16 +45,16 @@ Frontend `.env` keeps app/client settings. Contract addresses should normally st
 
 ```env
 VITE_API_BASE_URL=
-VITE_WORLD_CHAIN_ID=4801
+VITE_WORLD_CHAIN_ID=480
 ```
 
 Backend `.env` selects the network and points to the central config. Private keys remain in `.env`.
 
 ```env
-DEPLOY_NETWORK=worldchainSepolia
+DEPLOY_NETWORK=worldchain
 UNON_NETWORK_CONFIG_PATH=../config/unon-networks.json
-WORLD_CHAIN_CHAIN_ID=4801
-WORLD_CHAIN_RPC=https://worldchain-sepolia.g.alchemy.com/public
+WORLD_CHAIN_CHAIN_ID=480
+WORLD_CHAIN_RPC=https://worldchain-mainnet.g.alchemy.com/public
 PRIZE_REGISTRAR_PRIVATE_KEY=<entry authorization signer private key>
 ```
 
@@ -65,7 +65,7 @@ Do not expose `PRIZE_REGISTRAR_PRIVATE_KEY` in frontend files or documentation. 
 - `GET /api/chain-config` returns the active network, chain id, explorer, public contract addresses, tokenomics policy, and feature flags.
 - The response is sourced from `config/unon-networks.json`.
 - Secrets such as private keys, API keys, and signer keys are never returned.
-- Sepolia testing and production World Chain addresses are separated under `worldchainSepolia` and `worldchain`.
+- Production and explicit Sepolia test addresses remain separated under `worldchain` and `worldchainSepolia`.
 
 ## Verification
 
@@ -85,3 +85,20 @@ The UNON contract project also passes its Hardhat test suite with the prize mana
 The selected deployment layout uses GitHub, Vercel for the Vite frontend, Supabase PostgreSQL, and Google Cloud Run for the Express API and YouTube upload path.
 
 See [`docs/CLOUD_DEPLOYMENT.md`](docs/CLOUD_DEPLOYMENT.md) for secrets, service settings, scheduled jobs, verification, and free-tier constraints.
+
+## World Developer Portal MCP
+
+This repository includes a project-scoped Codex connection to the official World Developer Portal MCP. It is a local development tool and is not used by the Vercel frontend or Cloud Run backend.
+
+1. In the World Developer Portal, open the ChallengeON team and create a project-specific API key.
+2. Before starting Codex, expose the key to that process in PowerShell:
+
+```powershell
+$env:WORLD_DEVELOPER_API_KEY = "api_..."
+codex
+```
+
+3. Trust this repository when Codex asks whether project configuration may be loaded.
+4. Start a new Codex session, then call `get_team_context` before reading or changing app configuration.
+
+Never add the API key to `.env.example`, a `VITE_` variable, Vercel, Cloud Run, Git, logs, or chat messages. Creating or modifying apps, rotating signing keys, uploading assets, and submitting an app for review require explicit confirmation at the time of the action.

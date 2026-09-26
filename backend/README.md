@@ -35,13 +35,13 @@ Public contract addresses are centralized in `../config/unon-networks.json`.
 The backend loads the selected network with `DEPLOY_NETWORK` and exposes safe frontend values through `GET /api/chain-config`.
 
 ```env
-DEPLOY_NETWORK=worldchainSepolia
+DEPLOY_NETWORK=worldchain
 UNON_NETWORK_CONFIG_PATH=../config/unon-networks.json
-WORLD_CHAIN_CHAIN_ID=4801
-WORLD_CHAIN_RPC=https://worldchain-sepolia.g.alchemy.com/public
+WORLD_CHAIN_CHAIN_ID=480
+WORLD_CHAIN_RPC=https://worldchain-mainnet.g.alchemy.com/public
 ```
 
-Keep private keys and API keys in `.env`. Keep `UNON_*_ADDRESS` env vars empty unless you intentionally need a temporary local override. Local and staging environments use World Chain Sepolia (`chainId 4801`). Production uses World Chain (`chainId 480`) and must use the `worldchain` section of the central config.
+Keep private keys and API keys in `.env`. Keep `UNON_*_ADDRESS` env vars empty unless you intentionally need a temporary local override. ChallengeON defaults to World Chain (`chainId 480`) and uses the `worldchain` section of the central config. Select World Chain Sepolia (`chainId 4801`) explicitly only for isolated testing.
 
 ## Entry Authorization Signer
 
