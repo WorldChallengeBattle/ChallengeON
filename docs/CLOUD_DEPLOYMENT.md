@@ -37,15 +37,15 @@ Recommended initial service settings:
 - Maximum instances: 2
 - Public ingress: enabled for the application API
 
-Required secrets:
+Required Cloud Run secret:
 
-- `DATABASE_URL`
-- `FIREBASE_SERVICE_ACCOUNT_JSON`
-- `YOUTUBE_CLIENT_ID`
-- `YOUTUBE_CLIENT_SECRET`
-- `YOUTUBE_REFRESH_TOKEN`
-- `CRON_SECRET`
-- Private signer keys currently present in `backend/.env`, when their features are enabled
+- `RUNTIME_SECRETS_JSON`: a single JSON object containing `DATABASE_URL`,
+  `FIREBASE_SERVICE_ACCOUNT_JSON`, YouTube credentials, `CRON_SECRET`, API tokens,
+  admin allowlists, and private signer keys needed by enabled features.
+
+The bundled secret keeps the deployment within Secret Manager's six-active-version
+free allowance. Individual environment variables still override bundled values for
+local development and emergency configuration.
 
 Required configuration:
 

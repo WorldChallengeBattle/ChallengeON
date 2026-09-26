@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('./runtime-secrets').loadRuntimeSecrets();
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
