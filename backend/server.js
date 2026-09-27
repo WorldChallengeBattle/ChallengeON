@@ -3331,7 +3331,7 @@ async function startBackgroundScraper() {
         AND c.hashtags IS NOT NULL
         AND c.hashtags <> ''
       GROUP BY c.id
-      ORDER BY MAX(v.updated_at) ASC NULLS FIRST, COALESCE(c.created_at, NOW()) DESC
+      ORDER BY c.event_config->>'lastTrendSyncAt' ASC NULLS FIRST, COALESCE(c.created_at, NOW()) DESC
       LIMIT $1
     `, [batchSize]);
     trendRes.rows.forEach(row => {
@@ -3512,6 +3512,16 @@ async function syncSingleChallenge(challenge) {
     }
   } catch (err) {
     console.error(`[-] Sync Error:`, err.message);
+  } finally {
+    try {
+      await pool.query(`
+        UPDATE ${TABLE_CHALLENGES}
+        SET event_config = COALESCE(event_config, '{}'::jsonb) || jsonb_build_object('lastTrendSyncAt', NOW())
+        WHERE id = $1
+      `, [challenge.id]);
+    } catch (err) {
+      console.error(`[SYNC] Failed to record sync time for ${challenge.id}:`, err.message);
+    }
   }
 }
 
