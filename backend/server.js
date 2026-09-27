@@ -3317,7 +3317,7 @@ async function startBackgroundScraper() {
   console.log('[BACKGROUND] Worker starting sync...');
   if (process.env.APIFY_API_TOKEN === 'DUMMY_TOKEN') return;
 
-  const batchSize = Math.min(Math.max(parseInt(process.env.TREND_SYNC_BATCH_SIZE, 10) || 4, 1), 20);
+  const batchSize = Math.min(Math.max(parseInt(process.env.TREND_SYNC_BATCH_SIZE, 10) || 2, 1), 20);
   const tasks = [];
 
   // Rotate through active Trend ON topics so scheduled runs stay within the crawler budget.
@@ -3415,30 +3415,51 @@ async function syncSingleChallenge(challenge) {
     
     console.log(`[SYNC] Syncing #${tag}`);
 
-    const [insta, tiktok, youtube] = await Promise.allSettled([
-      client.actor("apify/instagram-reels-scraper").call({ hashtags: [tag], resultsLimit: 3 }),
-      client.actor("apify/tiktok-hashtag-scraper").call({ hashtags: [tag], resultsLimit: 3 }),
-      client.actor("apify/youtube-shorts-scraper").call({ hashtags: [tag], resultsLimit: 3 })
+    const [insta, tiktok] = await Promise.allSettled([
+      client.actor('apify/instagram-hashtag-scraper').call({
+        hashtags: [tag],
+        resultsType: 'reels',
+        resultsLimit: 3
+      }),
+      client.actor('clockworks/tiktok-scraper').call({
+        hashtags: [tag],
+        resultsPerPage: 3,
+        shouldDownloadVideos: false,
+        shouldDownloadCovers: false,
+        commentsPerPost: 0,
+        maxFollowersPerProfile: 0,
+        maxFollowingPerProfile: 0,
+        maxRepliesPerComment: 0,
+        topLevelCommentsPerPost: 0,
+        proxyCountryCode: 'None'
+      })
     ]);
 
     const merged = [];
     const rejected = [];
     const mapItem = (item, platform) => {
-        let vUrl = item.videoUrl || item.url || item.webVideoUrl || '';
+        const sourceId = platform === 'instagram' ? (item.shortCode || item.id) : item.id;
+        if (!sourceId) return null;
+        const directVideoUrl = item.videoUrl || item.mediaUrls?.[0] || '';
+        const externalUrl = item.url || item.webVideoUrl || directVideoUrl;
+        const vUrl = platform === 'instagram'
+          ? (item.url || directVideoUrl)
+          : platform === 'tiktok'
+            ? (item.webVideoUrl || item.url || directVideoUrl)
+            : directVideoUrl;
         if (!vUrl) return null;
-        const externalUrl = item.url || item.webVideoUrl || vUrl;
         const videoTitle = item.caption || item.title || item.text || '';
         return {
-            id: `${platform}_${item.id || Buffer.from(externalUrl).toString('base64url').slice(0, 40)}`,
+            id: `${platform}_${sourceId}`,
             challengeId: challenge.id,
             platform,
             author: item.ownerUsername || item.authorMeta?.nickname || item.channelName || 'Creator',
             viewCount: item.videoPlayCount || item.playCount || item.viewCount || 0,
             videoTitle: videoTitle || `#${tag}`,
             videoUrl: vUrl,
-            thumbnailUrl: item.displayUrl || item.covers?.default || item.thumbnailUrl || '',
+            thumbnailUrl: item.displayUrl || item.covers?.default || item.thumbnailUrl || item.videoMeta?.coverUrl || '',
             externalUrl,
-            durationSeconds: item.duration || item.durationSeconds || item.videoDuration || item.lengthSeconds || null
+            durationSeconds: item.duration || item.durationSeconds || item.videoDuration || item.lengthSeconds || item.videoMeta?.duration || null
         };
     };
 
@@ -3458,22 +3479,18 @@ async function syncSingleChallenge(challenge) {
         items.forEach(i => { const m = mapItem(i, 'instagram'); if(m && acceptItem(m)) merged.push(m); });
     }
     if (tiktok.status === 'fulfilled') {
-        const { items } = await client.dataset(tiktok.status === 'fulfilled' ? tiktok.value.defaultDatasetId : null).listItems();
+        const { items } = await client.dataset(tiktok.value.defaultDatasetId).listItems();
         items.forEach(i => { const m = mapItem(i, 'tiktok'); if(m && acceptItem(m)) merged.push(m); });
     }
-    if (youtube.status === 'fulfilled') {
-        const { items } = await client.dataset(youtube.value.defaultDatasetId).listItems();
-        items.forEach(i => { const m = mapItem(i, 'youtube'); if(m && acceptItem(m)) merged.push(m); });
-    }
+    if (insta.status === 'rejected') console.error(`[SCRAPER] Instagram #${tag}: ${insta.reason?.message || 'failed'}`);
+    if (tiktok.status === 'rejected') console.error(`[SCRAPER] TikTok #${tag}: ${tiktok.reason?.message || 'failed'}`);
 
     if (rejected.length > 0) {
       console.log(`[FILTER] #${tag}: rejected ${rejected.length} weak matches`);
     }
 
-    if (merged.length === 0) {
-      const fallback = await searchYouTubeFallback(challenge, tag, acceptItem);
-      merged.push(...fallback);
-    }
+    const youtubeFallback = await searchYouTubeFallback(challenge, tag, acceptItem);
+    merged.push(...youtubeFallback);
 
     if (merged.length > 0) {
       const sortedVideos = selectDiverseVideos(merged
