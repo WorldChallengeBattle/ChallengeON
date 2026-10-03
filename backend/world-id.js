@@ -1,11 +1,14 @@
-const { Wallet, keccak256, toUtf8Bytes, toBeHex, AbiCoder } = require('ethers');
+const { Wallet, keccak256, getBytes, toUtf8Bytes, toBeHex, AbiCoder } = require('ethers');
 const { authenticatedWalletRecipient } = require('./wallet-auth-policy');
 
 const ACTION = 'challengeon-welcome-reward';
 const APP_ID = 'app_a5a8b0a2d65c376bf242d317a9f4ac78';
 const RP_ID = 'rp_cba96127b0447fa4';
 const SIGNER = '0xD6790da916e0a46bf570EA037121c68f9340AAcc';
-const signalHash = (wallet) => toBeHex(BigInt(keccak256(toUtf8Bytes(wallet))) >> 8n, 32);
+// IDKit interprets valid 0x-prefixed signals as bytes, not UTF-8 text.
+const signalHash = (signal) => toBeHex(BigInt(keccak256(
+  /^0x(?:[0-9a-fA-F]{2})+$/.test(signal) ? getBytes(signal) : toUtf8Bytes(signal)
+)) >> 8n, 32);
 
 function normalizedNullifier(value) {
   if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{1,64}$/.test(value) || BigInt(value) === 0n) {

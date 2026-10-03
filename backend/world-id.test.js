@@ -2,13 +2,18 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { PGlite } = require('@electric-sql/pglite');
-const { Wallet, getBytes, verifyMessage, Interface } = require('ethers');
+const { Wallet, getBytes, verifyMessage, Interface, toBeHex, keccak256, toUtf8Bytes } = require('ethers');
 const { validateWelcomeReceipt } = require('./wallet-profile');
 const { ACTION, APP_ID, RP_ID, SIGNER, signalHash, normalizedNullifier, identityForClaim,
   validateProof, validateVerification, bindIdentity, getWelcomeBinding, registerWorldIdRoutes } = require('./world-id');
 
 async function main() {
   const wallet = Wallet.createRandom().address.toLowerCase();
+  const { hashSignal } = await import('@worldcoin/idkit-core/hashing');
+  assert.equal(signalHash(wallet), hashSignal(wallet));
+  assert.equal(signalHash('test_signal'), hashSignal('test_signal'));
+  const textHash = toBeHex(BigInt(keccak256(toUtf8Bytes(wallet))) >> 8n, 32);
+  assert.notEqual(signalHash(wallet), textHash);
   const other = Wallet.createRandom().address.toLowerCase();
   const nonce = '0x' + '12'.repeat(32);
   const challenge = { nonce, wallet, rp_id: RP_ID, action: ACTION, expires_at: new Date(Date.now() + 300000), consumed_at: null };
@@ -24,6 +29,7 @@ async function main() {
   assert.throws(() => normalizedNullifier('0x' + 'f'.repeat(65)));
   assert.equal(signalHash('test_signal'), '0x00c1636e0a961a3045054c4d61374422c31a95846b8442f0927ad2ff1d6112ed');
   assert.equal(validateProof(proof, challenge, wallet), '10');
+  assert.throws(() => validateProof({ ...proof, responses: [{ ...proof.responses[0], signal_hash: textHash }] }, challenge, wallet));
   assert.throws(() => validateProof(proof, challenge, other));
   assert.throws(() => validateProof(proof, { ...challenge, consumed_at: new Date() }, wallet));
   assert.throws(() => validateProof(proof, { ...challenge, expires_at: new Date(0) }, wallet));

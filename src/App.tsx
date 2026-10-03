@@ -3899,10 +3899,10 @@ function App() {
                   {currentUser.uid.substring(0, 6)}...{currentUser.uid.substring(currentUser.uid.length - 4)}
                 </div>
               </div>
-              <div className="profile-human-verified">
+              {userData?.worldIdVerified === true && <div className="profile-human-verified">
                 <CheckCircle2 size={14} />
                 <span>Human Identity Verified</span>
-              </div>
+              </div>}
               <div className="unon-badge-progress">
                 <div>
                   <span>{nextUnonBadgeTier ? `Next: ${nextUnonBadgeTier.name}` : 'Highest badge unlocked'}</span>
