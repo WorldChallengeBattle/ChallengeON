@@ -48,12 +48,22 @@ export function WorldIdSessionVerification({ request, user, onClose, onVerified,
       }
     }}
     onSuccess={() => { if (backendVerified.current) onVerified(); }}
-    onError={code => {
+    onError={(code, report) => {
       if (backendVerified.current) return;
       errorReported.current = true;
       const safeCode = typeof code === 'string' && /^[a-z0-9_]{1,64}$/.test(code) ? code : null;
+      // Only fixed transport labels may leave the SDK's sensitive debug report.
+      let diagnostic = '';
+      if (report?.transport === 'mini_app') {
+        const platform = report.mini_app?.platform;
+        const version = report.mini_app?.verify_version;
+        const response = report.response_payload;
+        const source = response && typeof response === 'object' && 'status' in response
+          ? (response.status === 'error' ? 'native-error' : 'response-parse') : 'sdk';
+        diagnostic = ` [mini_app/${platform === 'android' || platform === 'ios' ? platform : 'unknown'}/${version === 1 || version === 2 ? `verify-v${version}` : 'verify-unknown'}/${source}]`;
+      }
       onError(backendError.current || (safeCode
-        ? `World ID sign-in failed (${safeCode}). Please try again.`
+        ? `World ID sign-in failed (${safeCode}). Please try again.${diagnostic}`
         : 'Human verification was not completed. Please try again.'));
     }}
   />;

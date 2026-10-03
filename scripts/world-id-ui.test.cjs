@@ -92,6 +92,22 @@ async function main() {
   failedSession.props.onError('failed_by_host_app'); failedSession.props.onOpenChange(false); failedSession.props.onSuccess();
   assert.deepEqual(failedSession.errors, ['Session rejected']);
   assert.equal(failedSession.successes(), 0); assert.equal(failedSession.closes(), 0);
+  const malformed = widget(async () => { throw new Error('Backend must not be called'); }, true);
+  malformed.props.onError('malformed_request', {
+    transport: 'mini_app', mini_app: { platform: 'android', verify_version: 2 },
+    request_payload: { signature: 'private fixture', session_id: 'private fixture' },
+    response_payload: { status: 'error', error_code: 'malformed_request', message: 'private fixture' }
+  });
+  assert.equal(malformed.errors[0], 'World ID sign-in failed (malformed_request). Please try again. [mini_app/android/verify-v2/native-error]');
+  assert.equal(malformed.successes(), 0);
+  assert.doesNotMatch(malformed.errors[0], /private fixture/);
+  const untrustedReport = widget(async () => ({}), true);
+  untrustedReport.props.onError('malformed_request', {
+    transport: 'mini_app', mini_app: { platform: 'private fixture', verify_version: 'private fixture' },
+    response_payload: 'private fixture'
+  });
+  assert.match(untrustedReport.errors[0], /mini_app\/unknown\/verify-unknown\/sdk/);
+  assert.doesNotMatch(untrustedReport.errors[0], /private fixture/);
   const app = fs.readFileSync('src/App.tsx', 'utf8');
   assert.match(app, /userData\?\.worldIdVerified === true && <div className="profile-human-verified">/);
   console.log('World ID UI callbacks: backend failure retained, late error suppressed only after server success, badge gated.');
