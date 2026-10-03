@@ -1,12 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import {
-  type User,
-  onAuthStateChanged,
-  signInWithCustomToken,
-} from 'firebase/auth';
-import { auth } from '../firebase';
+import { type User, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { MiniKit } from '@worldcoin/minikit-js';
+import { RefreshCw, Shield } from 'lucide-react';
+import { auth } from '../firebase';
 import { apiUrl } from '../config/api';
+import { WorldIdWelcomeVerification, type WelcomeProofRequest } from '../components/WorldIdWelcomeVerification';
+import brandIcon from '../assets/brand/ChallengeOnICO.png';
 
 interface UserData {
   uid: string;
@@ -20,7 +19,6 @@ interface UserData {
   onboardingClaimPendingHash?: string | null;
   onboardingClaimPendingAt?: unknown;
 }
-
 interface AuthContextType {
   currentUser: User | null;
   userData: UserData | null;
@@ -28,135 +26,163 @@ interface AuthContextType {
   refreshUserData: () => Promise<void>;
   getFreshWalletToken: () => Promise<string>;
 }
-
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
-
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accessGranted, setAccessGranted] = useState(false);
+  const [error, setError] = useState('');
+  const [proofRequest, setProofRequest] = useState<WelcomeProofRequest | null>(null);
   const hasAttemptedAutoLoginRef = useRef(false);
   const isAuthenticatingRef = useRef(false);
+  const generation = useRef(0);
+  const proofAccepted = useRef(false);
 
-  const syncUserData = async (user: User) => {
-    try {
-      const response = await fetch(apiUrl('/api/auth/profile'), {
-        headers: { Authorization: `Bearer ${await user.getIdToken()}` }
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || 'Profile unavailable');
-      setUserData(result.data as UserData);
-    } catch (error: any) {
-      console.error('[Auth] Firestore sync error:', error.message);
-    }
-  };
+  const syncUserData = useCallback(async (user: User) => {
+    const response = await fetch(apiUrl('/api/auth/profile'), { headers: { Authorization: `Bearer ${await user.getIdToken()}` } });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || 'Profile unavailable');
+    if (auth.currentUser?.uid === user.uid) setUserData(result.data as UserData);
+    return result.data as UserData;
+  }, []);
 
-  const refreshUserData = async () => {
-    if (currentUser) {
-      await syncUserData(currentUser);
-    }
-  };
-
-  const loginWithWorldID = useCallback(async (force = false) => {
-    if ((!force && currentUser) || isAuthenticatingRef.current) {
-      return;
-    }
-
-    if (!MiniKit.isInstalled()) {
-      console.warn('MiniKit is not installed. Please run this app inside World App.');
-      return;
-    }
-
+  const loginWithWorldID = useCallback(async () => {
+    if (isAuthenticatingRef.current) return;
+    if (!MiniKit.isInstalled()) throw new Error('Open Challenge ON inside World App.');
     isAuthenticatingRef.current = true;
-
     try {
       const nonceRes = await fetch(apiUrl('/api/auth/nonce'));
       const nonceData = await nonceRes.json();
       if (!nonceRes.ok || !nonceData.success) throw new Error(nonceData.error || 'Wallet login is unavailable.');
-
-      const authResult = await MiniKit.walletAuth({
-        nonce: nonceData.nonce,
-        statement: 'Log in to Challenge On with your wallet.',
-        expirationTime: new Date(Date.now() + 5 * 60 * 1000),
-      });
-
-      if (!authResult?.data) {
-        console.warn('[World ID] Verification did not complete successfully.');
-        return;
-      }
-
+      const authResult = await MiniKit.walletAuth({ nonce: nonceData.nonce,
+        statement: 'Log in to Challenge On with your wallet.', expirationTime: new Date(Date.now() + 5 * 60 * 1000) });
+      if (!authResult?.data) throw new Error('Wallet login was not completed.');
       const verifyRes = await fetch(apiUrl('/api/auth/complete-siwe'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payload: authResult, nonce: nonceData.nonce }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: authResult, nonce: nonceData.nonce })
       });
-      const verifyData = await verifyRes.json();
-
-      if (!verifyData.success) {
-        throw new Error(verifyData.error || 'World ID verification failed.');
-      }
-
-      const credential = await signInWithCustomToken(auth, verifyData.customToken);
-      console.log('[World ID] Successfully authenticated with SIWE.');
-      return credential.user;
-    } catch (error) {
-      console.error('[World ID] Auth error:', error);
-      if (force) throw error;
-    } finally {
-      isAuthenticatingRef.current = false;
-    }
-  }, [currentUser]);
+      const data = await verifyRes.json();
+      if (!verifyRes.ok || !data.success) throw new Error(data.error || 'Wallet login failed.');
+      return (await signInWithCustomToken(auth, data.customToken)).user;
+    } finally { isAuthenticatingRef.current = false; }
+  }, []);
 
   const getFreshWalletToken = useCallback(async () => {
-    if (!currentUser) throw new Error('Sign in with your wallet first');
-    const token = await currentUser.getIdTokenResult();
+    const user = auth.currentUser;
+    if (!user) throw new Error('Sign in with your wallet first');
+    const token = await user.getIdTokenResult();
     const claims = token.claims;
     if (claims.wallet_auth_version === 2 && claims.wallet_verified === true &&
-        String(claims.wallet_address).toLowerCase() === currentUser.uid.toLowerCase() &&
+        String(claims.wallet_address).toLowerCase() === user.uid.toLowerCase() &&
         Date.now() - Number(claims.auth_time) * 1000 < 14 * 60 * 1000) return token.token;
-    const signedIn = await loginWithWorldID(true);
-    if (!signedIn || signedIn.uid.toLowerCase() !== currentUser.uid.toLowerCase()) {
-      throw new Error('Please use the same wallet and try again');
-    }
+    const signedIn = await loginWithWorldID();
+    if (!signedIn || signedIn.uid.toLowerCase() !== user.uid.toLowerCase()) throw new Error('Please use the same wallet and try again');
     return signedIn.getIdToken(true);
-  }, [currentUser, loginWithWorldID]);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-
-      try {
-        if (user) {
-          await syncUserData(user);
-        } else {
-          setUserData(null);
-
-          if (!hasAttemptedAutoLoginRef.current) {
-            hasAttemptedAutoLoginRef.current = true;
-            void loginWithWorldID();
-          }
-        }
-      } finally {
-        setLoading(false);
-      }
-    });
-
-    return unsubscribe;
   }, [loginWithWorldID]);
 
-  const value = {
-    currentUser,
-    userData,
-    loading,
-    refreshUserData,
-    getFreshWalletToken,
+  const prepareAccess = useCallback(async (user: User, run: number) => {
+    try {
+      if (!MiniKit.isInstalled()) throw new Error('Open Challenge ON inside World App.');
+      const token = await getFreshWalletToken();
+      if (run !== generation.current) return;
+      await syncUserData(user);
+      if (run !== generation.current) return;
+      const response = await fetch(apiUrl('/api/auth/world-id/request'), { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const data = await response.json();
+      if (run !== generation.current) return;
+      if (!response.ok) throw new Error(data.error || 'Human verification is unavailable');
+      if (data.verified === true) {
+        const profile = await syncUserData(user);
+        if (run !== generation.current) return;
+        if (profile.worldIdVerified !== true) throw new Error('Human verification is not confirmed');
+        setAccessGranted(true);
+      } else {
+        if (data.signal !== user.uid.toLowerCase()) throw new Error('Sign in with the same wallet again');
+        proofAccepted.current = false;
+        setProofRequest(data);
+      }
+    } catch (cause) {
+      if (run === generation.current) setError(cause instanceof Error ? cause.message : 'Sign-in failed');
+    } finally { if (run === generation.current) setLoading(false); }
+  }, [getFreshWalletToken, syncUserData]);
+
+  const refreshUserData = useCallback(async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    try {
+      const profile = await syncUserData(user);
+      if (profile.worldIdVerified !== true) { setAccessGranted(false); setError('Human verification is required.'); }
+    } catch { setAccessGranted(false); setError('Unable to confirm your profile. Please retry.'); }
+  }, [syncUserData]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, user => {
+      const run = ++generation.current;
+      setCurrentUser(user);
+      setUserData(null);
+      setAccessGranted(false);
+      setProofRequest(null);
+      setError('');
+      setLoading(true);
+      if (user) void prepareAccess(user, run);
+      else if (!hasAttemptedAutoLoginRef.current) {
+        hasAttemptedAutoLoginRef.current = true;
+        void loginWithWorldID().catch(cause => {
+          if (!auth.currentUser) { setError(cause.message); setLoading(false); }
+        });
+      } else setLoading(false);
+    });
+    return () => { generation.current++; unsubscribe(); };
+  }, [loginWithWorldID, prepareAccess]);
+
+  const retry = async () => {
+    setError('');
+    setLoading(true);
+    if (auth.currentUser) await prepareAccess(auth.currentUser, ++generation.current);
+    else {
+      try { await loginWithWorldID(); }
+      catch (cause) { setError(cause instanceof Error ? cause.message : 'Sign-in failed'); setLoading(false); }
+    }
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
+  const finishProof = async () => {
+    proofAccepted.current = true;
+    setProofRequest(null);
+    setLoading(true);
+    const run = generation.current;
+    try {
+      if (!auth.currentUser) throw new Error('Sign in again.');
+      const profile = await syncUserData(auth.currentUser);
+      if (run !== generation.current) return;
+      if (profile.worldIdVerified !== true) throw new Error('Human verification is not confirmed');
+      setAccessGranted(true);
+      setError('');
+    } catch (cause) {
+      if (run === generation.current) setError(cause instanceof Error ? cause.message : 'Human verification failed');
+    } finally { if (run === generation.current) setLoading(false); }
+  };
+
+  return <AuthContext.Provider value={{ currentUser, userData, loading, refreshUserData, getFreshWalletToken }}>
+    {accessGranted && currentUser && userData?.worldIdVerified === true ? children : (
+      <main className="auth-entry">
+        <img src={brandIcon} alt="" className="auth-entry-brand" />
+        <h1>Challenge ON</h1>
+        <Shield size={28} aria-hidden="true" />
+        <p role={error ? 'alert' : 'status'}>{error || (proofRequest ? 'Verifying your World ID...' : 'Signing in securely...')}</p>
+        {!loading && !proofRequest && <button type="button" onClick={() => { void retry(); }}>
+          <RefreshCw size={18} /> Retry sign-in
+        </button>}
+      </main>
+    )}
+    {proofRequest && currentUser && proofRequest.signal === currentUser.uid.toLowerCase() && <WorldIdWelcomeVerification
+      key={proofRequest.rp_context.nonce} request={proofRequest} user={currentUser}
+      onVerified={() => { void finishProof(); }}
+      onClose={() => {
+        if (!proofAccepted.current) { setProofRequest(null); setError('Human verification was not completed. Please retry.'); }
+      }}
+      onError={message => { if (!proofAccepted.current) { setProofRequest(null); setError(message); } }}
+    />}
+  </AuthContext.Provider>;
 };

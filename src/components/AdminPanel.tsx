@@ -23,6 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import { apiUrl } from '../config/api';
+import { apiFetch as fetch } from '../config/apiFetch';
 
 type AdminPanelProps = {
   currentUser: User;

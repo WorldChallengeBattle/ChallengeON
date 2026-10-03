@@ -2,6 +2,7 @@
 import { X, Circle, Square, CheckCircle2, Share2, Camera, Video, Send, Download, RefreshCw, UploadCloud } from 'lucide-react';
 import VideoEditor from './VideoEditor';
 import { apiUrl } from '../config/api';
+import { apiFetch as fetch } from '../config/apiFetch';
 import { MiniKit } from '@worldcoin/minikit-js';
 import { auth } from '../firebase';
 

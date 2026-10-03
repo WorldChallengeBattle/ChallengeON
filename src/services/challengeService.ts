@@ -1,5 +1,6 @@
 ﻿// Removed direct Firebase imports for challenges, now using backend API
 import { apiUrl } from '../config/api';
+import { apiFetch as fetch } from '../config/apiFetch';
 
 export interface Challenge {
   id: string;

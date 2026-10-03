@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './contexts/AuthContext';
+import { apiFetch as fetch } from './config/apiFetch';
 import { 
   Flame, 
   TrendingUp, 
@@ -39,7 +40,6 @@ import {
 const CameraCapture = React.lazy(() => import('./components/CameraCapture'));
 const AdminPanel = React.lazy(() => import('./components/AdminPanel'));
 import VideoPlayer from './components/VideoPlayer';
-import { WorldIdWelcomeVerification, type WelcomeProofRequest } from './components/WorldIdWelcomeVerification';
 import { 
   getChallenges, 
   getAnnouncements,
@@ -471,9 +471,6 @@ function App() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [userVotes, setUserVotes] = useState<Record<string, string>>({});
   const [isClaiming, setIsClaiming] = useState(false);
-  const [welcomeProofRequest, setWelcomeProofRequest] = useState<WelcomeProofRequest | null>(null);
-  const [isPreparingWelcomeProof, setIsPreparingWelcomeProof] = useState(false);
-  const [claimAfterWelcomeProof, setClaimAfterWelcomeProof] = useState(false);
   const profileWalletAddress = [
     currentUser?.uid,
     getMiniKitWalletAddress(),
@@ -552,29 +549,6 @@ function App() {
   };
 
 
-  const requestWelcomeProof = async (claimAfter = false) => {
-    if (!currentUser || !profileWalletAddress) throw new Error('Sign in with your wallet first.');
-    if (isChainConfigLoading || chainConfigError) throw new Error('Please wait until the current token network is available.');
-    setIsPreparingWelcomeProof(true);
-    try {
-      const proofResponse = await fetch(apiUrl('/api/auth/world-id/request'), {
-        method: 'POST', headers: { Authorization: `Bearer ${await getFreshWalletToken()}` }
-      });
-      const proofRequest = await proofResponse.json();
-      if (!proofResponse.ok) throw new Error(proofRequest.error || 'Human verification is unavailable');
-      if (proofRequest.verified === true) {
-        if (!claimAfter) {
-          await refreshUserData();
-          showToast('World ID verified.');
-        }
-        return true;
-      }
-      if (proofRequest.signal !== profileWalletAddress.toLowerCase()) throw new Error('Sign in with the recipient wallet again.');
-      setClaimAfterWelcomeProof(claimAfter);
-      setWelcomeProofRequest(proofRequest);
-      return false;
-    } finally { setIsPreparingWelcomeProof(false); }
-  };
 
   const handleClaimOnboardingVerified = async () => {
     if (!currentUser || isClaiming) return;
@@ -600,7 +574,7 @@ function App() {
         }
       }
 
-      if (!await requestWelcomeProof(true)) return;
+      if (userData?.worldIdVerified !== true) throw new Error('Human verification is required.');
       const claimToken = await getFreshWalletToken();
       showToast('Generating claim signature...');
       const res = await fetch(apiUrl('/api/auth/onboarding-signature'), {
@@ -4035,15 +4009,7 @@ function App() {
             </div>
 
             <div className="profile-menu-container">
-              {userData?.worldIdVerified ? (
-                <div className="profile-menu-item"><Shield size={18} /><span>World ID verified</span></div>
-              ) : (
-                <button className="profile-menu-item"
-                  disabled={isPreparingWelcomeProof || !!welcomeProofRequest || isChainConfigLoading || !!chainConfigError}
-                  onClick={() => { void requestWelcomeProof(false).catch(error => showToast(getReadableErrorMessage(error))); }}>
-                  <Shield size={18} /><span>{isPreparingWelcomeProof ? 'Preparing verification...' : 'Verify World ID'}</span>
-                </button>
-              )}
+              <div className="profile-menu-item"><Shield size={18} /><span>World ID verified</span></div>
               <button className="profile-menu-item" onClick={() => setShowHistoryModal(true)}>
                 <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '12px' }}><Trophy size={18} /></div>
                 <span>My Arena History</span>
@@ -4067,25 +4033,6 @@ function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-    {welcomeProofRequest && currentUser && welcomeProofRequest.signal === currentUser.uid.toLowerCase() && (
-      <WorldIdWelcomeVerification
-        request={welcomeProofRequest}
-        user={currentUser}
-        onClose={() => setWelcomeProofRequest(null)}
-        onVerified={() => {
-          setWelcomeProofRequest(null);
-          if (claimAfterWelcomeProof) void handleClaimOnboardingVerified();
-          else {
-            void refreshUserData();
-            showToast('World ID verified.');
-          }
-        }}
-        onError={(message) => {
-          setWelcomeProofRequest(null);
-          showToast(message);
-        }}
-      />
-    )}
     <div className="app-container">
       <header className="header">
         <button type="button" className="logo-container" aria-label="Challenge ON" onClick={() => setCurrentTab('trend')}>

@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test:world-id-ui": "node scripts/world-id-ui.test.cjs",
+    "test:world-id-ui": "node scripts/world-id-ui.test.cjs && node scripts/auth-entry.test.cjs",
     "test:discovery": "node scripts/discovery.test.ts && node scripts/playback-safety.test.cjs",
     "dev": "vite",
     "build": "tsc -b && vite build",

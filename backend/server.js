@@ -9,6 +9,7 @@ const admin = require('firebase-admin');
 const { matchesCronSecret } = require('./cron-auth');
 const { CHALLENGE_TTL_MS, validateSiweContext, authenticatedRewardRecipient } = require('./wallet-auth-policy');
 const { registerWorldIdRoutes, getWelcomeBinding, identityForClaim } = require('./world-id');
+const { createHumanAccessGate } = require('./human-access');
 const { registerWalletProfileRoutes } = require('./wallet-profile');
 
 function loadFirebaseServiceAccount() {
@@ -473,6 +474,8 @@ async function requireAuthenticatedUser(req, res, next) {
     return res.status(401).json({ error: 'Invalid or expired Firebase ID token' });
   }
 }
+
+app.use('/api', createHumanAccessGate(pool, requireAuthenticatedUser));
 
 function isAdminDecodedUser(decoded) {
   const allowlist = getAdminAllowlist();
