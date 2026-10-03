@@ -132,7 +132,7 @@ function buildPublicConfig(config) {
     contracts: config.contracts,
     policy: config.policy,
     features: {
-      onboarding: !!config.contracts.onboardingManager,
+      onboarding: !!config.contracts.onboardingManager && process.env.ONBOARDING_REWARDS_ENABLED === 'true',
       prizeChallenges: !!(config.contracts.unonToken && config.contracts.prizeChallengeManager),
       staking: !!config.contracts.stakingLevelManager,
       fanSupport: !!config.contracts.fanSupportManager,
@@ -158,7 +158,9 @@ function loadNetworkConfig() {
   }
 
   const chainIdOverride = clean(process.env.WORLD_CHAIN_CHAIN_ID || process.env.UNON_CHAIN_ID);
-  const contracts = overrideObject(rawNetwork.contracts, CONTRACT_ENV_KEYS);
+  const contracts = rawNetwork.deployment?.addressesPinned
+    ? { ...rawNetwork.contracts }
+    : overrideObject(rawNetwork.contracts, CONTRACT_ENV_KEYS);
   const wallets = overrideObject(rawNetwork.wallets, WALLET_ENV_KEYS);
   const trackedWallets = [
     ...(Array.isArray(rawNetwork.wallets?.trackedWallets) ? rawNetwork.wallets.trackedWallets : []),
@@ -179,10 +181,19 @@ function loadNetworkConfig() {
       rawNetwork.explorerBaseUrl,
     contracts,
     wallets,
-    policy: rawNetwork.policy || {}
+    policy: rawNetwork.policy || {},
+    deployment: rawNetwork.deployment || {}
   };
 
   const warnings = [];
+  if (rawNetwork.deployment?.addressesPinned) {
+    for (const [key, envKeys] of Object.entries(CONTRACT_ENV_KEYS)) {
+      for (const envKey of envKeys) {
+        const value = clean(process.env[envKey]);
+        if (value && value.toLowerCase() !== String(contracts[key] || '').toLowerCase()) warnings.push(`Ignored stale ${envKey}; central replacement addresses are pinned.`);
+      }
+    }
+  }
   const errors = [];
   const productionRequired = selectedNetwork === 'worldchain'
     ? ['unonToken', 'onboardingManager', 'treasuryVault']

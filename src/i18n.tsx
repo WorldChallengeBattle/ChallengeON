@@ -25,6 +25,12 @@ export const SUPPORTED_LANGUAGES = [
 export type AppLanguage = (typeof SUPPORTED_LANGUAGES)[number]['code'];
 
 const en = {
+  browseChallenges: 'Browse challenges', allChallenges: 'Explore', saved: 'Saved', save: 'Save challenge', unsave: 'Remove saved challenge',
+  platform: 'Platform', allPlatforms: 'All platforms', sortChallenges: 'Sort challenges', popular: 'Popular', recent: 'Recently updated', mostVideos: 'Most videos',
+  refresh: 'Refresh', resultCount: '{count} challenges', noResults: 'No matching challenges', resetFilters: 'Reset filters',
+  feedError: 'Challenges could not be refreshed. Please try again.', retry: 'Try again', videoError: 'Videos could not be loaded.', loadingVideos: 'Loading videos...', noVideos: 'No videos yet',
+  joinChallenge: 'Join challenge', autoplay: 'Autoplay videos', startMuted: 'Start muted', playbackSettings: 'Playback', close: 'Close',
+  rankingError: 'Ranking could not be loaded. Please try again.',
   search: 'Search challenges...',
   openProfile: 'Open profile',
   selectLanguage: 'Select language',
@@ -88,6 +94,12 @@ type TranslationSet = Partial<Record<TranslationKey, string>>;
 const translations: Record<AppLanguage, TranslationSet> = {
   en,
   ko: {
+    browseChallenges: '챌린지 탐색', allChallenges: '둘러보기', saved: '저장됨', save: '챌린지 저장', unsave: '저장 해제',
+    platform: '플랫폼', allPlatforms: '모든 플랫폼', sortChallenges: '챌린지 정렬', popular: '인기순', recent: '최근 업데이트순', mostVideos: '영상 많은순',
+    refresh: '새로고침', resultCount: '챌린지 {count}개', noResults: '조건에 맞는 챌린지가 없습니다', resetFilters: '필터 초기화',
+    feedError: '챌린지를 불러오지 못했습니다. 다시 시도해 주세요.', retry: '다시 시도', videoError: '영상을 불러오지 못했습니다.', loadingVideos: '영상 불러오는 중...', noVideos: '아직 영상이 없습니다',
+    joinChallenge: '챌린지 참여', autoplay: '영상 자동 재생', startMuted: '음소거로 시작', playbackSettings: '재생', close: '닫기',
+    rankingError: '랭킹을 불러오지 못했습니다. 다시 시도해 주세요.',
     search: '챌린지 검색...', openProfile: '프로필 열기', selectLanguage: '언어 선택', navCreate: '만들기', navRanking: '랭킹',
     trendKicker: 'AI가 선별한 오늘의 트렌드', trendSummary: '보고 배우고 빠르게 참여할 수 있는 새로운 글로벌 트렌드를 만나보세요.', trendEmpty: '준비된 Trend ON 챌린지가 없습니다.',
     battleKicker: '크리에이터 영상과 플래티넘 챌린지', battleSummary: '선행 영상, 칭찬, 후원, 랭킹과 Platinum+ 상금 챌린지가 함께하는 공간입니다.', battleEmpty: '진행 중인 Battle ON 챌린지가 없습니다.',

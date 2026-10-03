@@ -16,6 +16,8 @@ export interface Challenge {
   userVideoCount?: number;
   externalVideoCount?: number;
   platforms?: string[];
+  thumbnailUrl?: string | null;
+  latestVideoAt?: string | null;
   likes?: number;
   dislikes?: number;
   createdByUid?: string | null;
@@ -89,18 +91,11 @@ const gradientPresets = [
 ];
 
 export const getChallenges = async (): Promise<Challenge[]> => {
-  try {
-    const res = await fetch(apiUrl('/api/challenges'));
-    if (res.ok) {
-      const result = await res.json();
-      if (result.success && result.data) {
-        return result.data;
-      }
-    }
-  } catch (e) {
-    console.error("Failed to fetch real challenges from backend:", e);
-  }
-  return [];
+  const res = await fetch(apiUrl('/api/challenges'));
+  if (!res.ok) throw new Error(`Challenge API: ${res.status}`);
+  const result = await res.json();
+  if (!result.success || !Array.isArray(result.data)) throw new Error('Invalid challenge response');
+  return result.data;
 };
 
 export const getAnnouncements = async (): Promise<Announcement[]> => {
@@ -167,8 +162,7 @@ export const createChallenge = async (challengeData: Omit<Challenge, 'id' | 'cre
     throw new Error(result.error || 'Failed to create challenge');
   } catch (error) {
     console.error("Failed to create challenge via backend:", error);
-    // Fallback/Simulate for UI continuity if backend is down
-    return { ...completeData, id: `temp_${Date.now()}` } as Challenge;
+    throw error;
   }
 };
 
@@ -183,6 +177,7 @@ export const joinChallenge = async (challengeId: string): Promise<void> => {
     }
   } catch (error) {
     console.error("Failed to join challenge via backend:", error);
+    throw error;
   }
 };
 
@@ -282,19 +277,7 @@ export const getChallengeVideos = async (
     }
     throw new Error(result.error || 'Invalid API response');
   } catch (error) {
-    console.error("Backend scraping API unavaliable or failed, falling back to local simulation:", error);
-    // Simulate network latency as fallback
-    await new Promise(r => setTimeout(r, 800));
-    
-    // Return dummy data corresponding to the requested challenge
-    const mockVideos: ChallengeOnVideo[] = Array.from({ length: 5 }).map((_, idx) => ({
-      id: `${challengeId}-fallback-${idx}`,
-      author: `user_${Math.floor(Math.random() * 9000) + 1000}`,
-      platform: 'instagram', // Default fallback platform
-      videoTitle: `Check out this ${challengeId} challenge!`,
-      viewCount: Math.floor(Math.random() * 500000) + 1000,
-    }));
-    
-    return mockVideos.sort((a,b) => b.viewCount - a.viewCount);
+    console.error('Challenge video request failed:', error);
+    throw error;
   }
 };

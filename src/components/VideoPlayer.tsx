@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Play, Star, Volume2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MiniKit } from '@worldcoin/minikit-js';
+import { getVideoSourceId } from '../services/videoSource';
 
 interface VideoPlayerProps {
   video: {
@@ -13,6 +14,7 @@ interface VideoPlayerProps {
     author?: string;
   };
   isMuted?: boolean;
+  autoplay?: boolean;
   onEnded?: () => void;
   onDelete?: () => void;
   onSupport?: () => void;
@@ -24,6 +26,7 @@ interface VideoPlayerProps {
 const VideoPlayer: React.FC<VideoPlayerProps> = ({
   video,
   isMuted = false,
+  autoplay = true,
   onEnded,
   onDelete,
   onSupport,
@@ -46,7 +49,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (!MiniKit.isInstalled()) return true;
     return localStorage.getItem('challengeOnSoundAutoplayUnlocked') === 'true';
   });
-  const soundAutoplayUnlockedRef = useRef(soundAutoplayUnlocked);
+  const soundAutoplayUnlockedRef = useRef(autoplay && (isMuted || soundAutoplayUnlocked));
+  const canAutoplay = autoplay && (isMuted || soundAutoplayUnlocked);
   const [isInView, setIsInView] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
@@ -77,8 +81,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [isActive, isMuted, onEnded, onDelete]);
 
   useEffect(() => {
-    soundAutoplayUnlockedRef.current = soundAutoplayUnlocked;
-  }, [soundAutoplayUnlocked]);
+    soundAutoplayUnlockedRef.current = canAutoplay;
+  }, [canAutoplay]);
 
   useEffect(() => {
     unavailableReportedRef.current = false;
@@ -138,14 +142,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   useEffect(() => {
     const handleSoundUnlock = () => {
-      soundAutoplayUnlockedRef.current = true;
+      soundAutoplayUnlockedRef.current = autoplay;
       setSoundAutoplayUnlocked(true);
-      if (isActiveRef.current) playCurrentVideo();
+      if (autoplay && isActiveRef.current) playCurrentVideo();
     };
 
     window.addEventListener('challengeon:sound-autoplay-unlocked', handleSoundUnlock);
     return () => window.removeEventListener('challengeon:sound-autoplay-unlocked', handleSoundUnlock);
-  }, [shouldUseNativeVideo, video.id, video.platform]);
+  }, [autoplay, shouldUseNativeVideo, video.id, video.platform]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -239,7 +243,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     if (shouldUseNativeVideo || !playerRef.current || !isPlayerReady) return;
 
-    if (isActive && soundAutoplayUnlocked) {
+    if (isActive && canAutoplay) {
       if (isMuted || shouldPrimeYouTubeMuted) playerRef.current.mute();
       else playerRef.current.unMute();
       playerRef.current.playVideo();
@@ -256,7 +260,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       playerRef.current.pauseVideo();
       setAutoplayBlocked(false);
     }
-  }, [hasWorldMiniKit, isActive, isMuted, isPlayerReady, shouldPrimeYouTubeMuted, shouldUseNativeVideo, soundAutoplayUnlocked]);
+  }, [hasWorldMiniKit, isActive, isMuted, isPlayerReady, shouldPrimeYouTubeMuted, shouldUseNativeVideo, canAutoplay]);
 
   useEffect(() => {
     if (!shouldUseNativeVideo || !videoRef.current) return;
@@ -266,17 +270,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return;
     }
 
-    if (isActive && isInView && soundAutoplayUnlocked) {
+    if (isActive && isInView && canAutoplay) {
       playCurrentVideo();
     } else {
       videoRef.current.pause();
       setAutoplayBlocked(false);
     }
-  }, [isActive, isInView, shouldUseNativeVideo, soundAutoplayUnlocked, video.id, video.videoUrl]);
+  }, [isActive, isInView, isMuted, shouldUseNativeVideo, canAutoplay, video.id, video.videoUrl]);
 
   const unlockSoundAutoplay = () => {
     localStorage.setItem('challengeOnSoundAutoplayUnlocked', 'true');
-    soundAutoplayUnlockedRef.current = true;
+    soundAutoplayUnlockedRef.current = autoplay;
     setSoundAutoplayUnlocked(true);
     window.dispatchEvent(new Event('challengeon:sound-autoplay-unlocked'));
     playCurrentVideoWithSound();
@@ -284,11 +288,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleManualPlay = () => {
     setAutoplayBlocked(false);
-    playCurrentVideoWithSound();
+    playCurrentVideo();
   };
 
   useEffect(() => {
-    if (!isActive || !hasWorldMiniKit || !soundAutoplayUnlocked) return;
+    if (!isActive || !hasWorldMiniKit || !canAutoplay) return;
 
     const retryFromGesture = () => {
       setAutoplayBlocked(false);
@@ -304,34 +308,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       window.removeEventListener('touchstart', retryFromGesture, { capture: true });
       window.removeEventListener('click', retryFromGesture, { capture: true });
     };
-  }, [hasWorldMiniKit, isActive, shouldUseNativeVideo, soundAutoplayUnlocked, video.id, video.platform]);
+  }, [hasWorldMiniKit, isActive, shouldUseNativeVideo, canAutoplay, video.id, video.platform]);
 
-  const getPlatformId = () => {
-    const url = video.videoUrl || '';
-
-    if (video.platform === 'youtube') {
-      if (video.id.startsWith('yt_')) return video.id.replace('yt_', '');
-      if (video.id.startsWith('youtube_')) return video.id.replace(/^youtube_/, '').split('_')[0];
-      const ytMatch = url.match(/(?:shorts\/|v=|v\/|embed\/|youtu.be\/)([^?&/]+)/);
-      return ytMatch ? ytMatch[1] : video.id;
-    }
-
-    if (video.platform === 'tiktok') {
-      if (video.id.startsWith('tiktok_')) return video.id.split('_')[1];
-      const ttMatch = url.match(/video\/(\d+)/);
-      return ttMatch ? ttMatch[1] : video.id;
-    }
-
-    if (video.platform === 'instagram') {
-      if (video.id.startsWith('instagram_')) return video.id.split('_')[1];
-      const igMatch = url.match(/(?:\/p\/|\/reels\/|\/reel\/)([^/?#&]+)/);
-      return igMatch ? igMatch[1] : video.id;
-    }
-
-    return video.id;
-  };
-
-  const platformId = getPlatformId();
+  const platformId = getVideoSourceId(video);
 
   return (
     <div ref={containerRef} className="video-item">
@@ -344,7 +323,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           right: 0,
           bottom: 0,
           background: `url(${video.thumbnailUrl}) center/cover no-repeat #000`,
-          filter: 'blur(5px) brightness(0.7)',
+          filter: 'none',
           zIndex: 0
         }}
       />
@@ -371,7 +350,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               poster={video.thumbnailUrl}
               muted={isMuted}
               playsInline
-              autoPlay={isActive && soundAutoplayUnlocked}
+              autoPlay={isActive && canAutoplay}
               preload={shouldPreload ? 'auto' : 'metadata'}
               onCanPlay={() => {
                 if (isActiveRef.current && soundAutoplayUnlockedRef.current) playCurrentVideo();
@@ -395,7 +374,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               key={`${video.id}-${soundAutoplayUnlocked ? 'sound' : 'locked'}`}
               id={`yt-player-${video.id}`}
               className="video-player"
-              src={`https://www.youtube.com/embed/${platformId}?autoplay=${isActive && soundAutoplayUnlocked ? 1 : 0}&controls=1&rel=0&enablejsapi=1&origin=${window.location.origin}&modestbranding=1&iv_load_policy=3&playsinline=1&mute=${shouldPrimeYouTubeMuted ? 1 : isMuted ? 1 : 0}&widgetid=1`}
+              src={`https://www.youtube.com/embed/${platformId}?autoplay=${isActive && canAutoplay ? 1 : 0}&controls=1&rel=0&enablejsapi=1&origin=${window.location.origin}&modestbranding=1&iv_load_policy=3&playsinline=1&mute=${shouldPrimeYouTubeMuted ? 1 : isMuted ? 1 : 0}&widgetid=1`}
               title="YouTube Shorts"
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -408,7 +387,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <iframe
               key={`${video.id}-${soundAutoplayUnlocked ? 'sound' : 'locked'}`}
               className="video-player"
-              src={`https://www.tiktok.com/embed/v2/${platformId}?autoplay=${isActive && soundAutoplayUnlocked ? 1 : 0}`}
+              src={`https://www.tiktok.com/embed/v2/${platformId}?autoplay=${isActive && canAutoplay ? 1 : 0}`}
               title="TikTok"
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -421,7 +400,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <iframe
               key={`${video.id}-${soundAutoplayUnlocked ? 'sound' : 'locked'}`}
               className="video-player"
-              src={`https://www.instagram.com/reels/${platformId}/embed/?autoplay=${isActive && soundAutoplayUnlocked ? 1 : 0}`}
+              src={`https://www.instagram.com/reels/${platformId}/embed/?autoplay=${isActive && canAutoplay ? 1 : 0}`}
               title="Instagram Reels"
               frameBorder="0"
               allowTransparency
@@ -434,7 +413,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       )}
 
-      {isActive && hasWorldMiniKit && !soundAutoplayUnlocked && (
+      {isActive && hasWorldMiniKit && !isMuted && !soundAutoplayUnlocked && (
         <button
           type="button"
           className="video-autoplay-unblock"

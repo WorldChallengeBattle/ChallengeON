@@ -1,13 +1,14 @@
 {
   "enabled": true,
   "networkKey": "worldchain",
-  "activeTokenAddress": "0x827F453646EE0622d122232f1CF00a10b1827Cd6",
-  "source": "prior-wctv2-makewhole",
+  "activeTokenAddress": "0xAB414689288B44bFDB2f7E97ED479b2eAd4A9371",
+  "source": "unon-replacement-2026-10-03",
   "sourceTokenAddress": "0x3C17A67869578913F7f6B19fA0ea95811DE25824",
   "fromBlock": 28359888,
   "toBlock": 28364050,
   "generatedAt": "2026-05-21T22:03:06.456Z",
-  "note": "Prior WCTv2 welcome reward holders were made whole 1:1 during the U&On rebranding. Treat these allocations as completed welcome claims in admin reporting.",
+  "replacementTransaction": "0xb24bbf3d4bed19b14453231969a6dad40c7441ec679991631ca09b1385e5abfa",
+  "note": "Two historical 100 UNON welcome claims were restored on replacement. The separate 500000000 UNON legacy payout is not a welcome reward.",
   "holders": [
     {
       "address": "0x44D2d43d8Af2728De94F4DB6C705eaB20eAcEeC9",

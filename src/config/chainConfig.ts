@@ -1,4 +1,5 @@
 import { apiUrl } from './api';
+import networkConfig from '../../config/unon-networks.json';
 
 export type ChainContracts = {
   unonToken?: string;
@@ -52,7 +53,8 @@ export const fallbackChainConfig: PublicChainConfig = {
       ? 'https://worldchain-mainnet.g.alchemy.com/public'
       : 'https://worldchain-sepolia.g.alchemy.com/public'),
   explorerBaseUrl: envChainId === 480 ? 'https://worldscan.org' : 'https://sepolia.worldscan.org',
-  contracts: {
+  features: { onboarding: false, migration: false },
+  contracts: envChainId === 480 ? networkConfig.networks.worldchain.contracts : {
     unonToken: import.meta.env.VITE_UNON_TOKEN_ADDRESS || '',
     onboardingManager: import.meta.env.VITE_UNON_ONBOARDING_MANAGER_ADDRESS || '',
     prizeChallengeManager: import.meta.env.VITE_UNON_PRIZE_MANAGER_ADDRESS || import.meta.env.VITE_WCT_PRIZE_MANAGER_ADDRESS || '',
@@ -81,6 +83,11 @@ export const fetchChainConfig = async (): Promise<PublicChainConfig> => {
   const payload = await response.json();
   if (!payload?.success || !payload?.data) {
     throw new Error('Chain config response is invalid.');
+  }
+  if (envChainId === 480 && (Number(payload.data.chainId) !== 480 ||
+      Object.entries(networkConfig.networks.worldchain.contracts).some(([key, address]) =>
+        String(payload.data.contracts?.[key] || '').toLowerCase() !== address.toLowerCase()))) {
+    throw new Error('The API has not switched to the current UNON deployment.');
   }
 
   return {

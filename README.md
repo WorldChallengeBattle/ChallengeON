@@ -69,10 +69,13 @@ Do not expose `PRIZE_REGISTRAR_PRIVATE_KEY` in frontend files or documentation. 
 
 ## Verification
 
+See [System and Experience Review](docs/SYSTEM_FLOW_REVIEW.md) for the current user flow, discovery controls, safety fixes, browser checks and release gates.
+
 Latest local checks:
 
 ```bash
 npm run build
+npm run test:discovery
 node --check backend/server.js
 node backend/challenge-matcher.test.js
 node backend/region-classifier.test.js

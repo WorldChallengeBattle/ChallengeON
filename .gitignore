@@ -20,6 +20,7 @@ backend/*firebase-adminsdk*.json
 backend/result_*.json
 backend/dasu.response
 tmp/
+.playwright-cli/
 
 # Editor directories and files
 .vscode/*

@@ -1,0 +1,17 @@
+.gcloudignore
+.git
+.github
+#!include:.gitignore
+GoodOn/
+src/
+public/
+docs/
+scripts/
+tmp/
+backend/uploads/
+backend/*firebase-adminsdk*.json
+backend/*.log
+**/.env
+**/.env.*
+**/node_modules/
+**/dist/

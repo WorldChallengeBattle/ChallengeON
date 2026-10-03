@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { 
   Flame, 
@@ -29,11 +29,17 @@ import {
   Shield,
   MinusCircle,
   Languages,
-  Swords
+  Swords,
+  Bookmark,
+  RefreshCw,
+  Play,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
-import CameraCapture from './components/CameraCapture';
-import AdminPanel from './components/AdminPanel';
+const CameraCapture = React.lazy(() => import('./components/CameraCapture'));
+const AdminPanel = React.lazy(() => import('./components/AdminPanel'));
 import VideoPlayer from './components/VideoPlayer';
+import { WorldIdWelcomeVerification, type WelcomeProofRequest } from './components/WorldIdWelcomeVerification';
 import { 
   getChallenges, 
   getAnnouncements,
@@ -45,18 +51,18 @@ import {
 } from './services/challengeService';
 import type { Announcement, Challenge, PublicDisplaySettings, ChallengeOnVideo } from './services/challengeService';
 import { DEFAULT_PUBLIC_DISPLAY_SETTINGS } from './services/challengeService';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { apiUrl } from './config/api';
 import { fallbackChainConfig, fetchChainConfig, type PublicChainConfig } from './config/chainConfig';
 import { MiniKit } from '@worldcoin/minikit-js';
-import { Permission } from '@worldcoin/minikit-js/commands';
-import { db } from './firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { Permission, type MiniKitSendTransactionOptions, type SendTransactionResult } from '@worldcoin/minikit-js/commands';
 import { createPublicClient, encodeFunctionData, formatUnits, http, parseUnits } from 'viem';
 import { worldchain, worldchainSepolia } from 'viem/chains';
 import { SUPPORTED_LANGUAGES, useI18n } from './i18n';
 import './index.css';
+import { discoverChallenges, type DiscoverySort } from './services/challengeDiscovery';
+import brandIcon from './assets/brand/ChallengeOnICO.png';
 
 const getWorldChain = (chainId: number) => (chainId === 480 ? worldchain : worldchainSepolia);
 const MINIKIT_API_BASE_URL = 'https://developer.world.org';
@@ -347,10 +353,14 @@ const EDITORS_CHOICE_TAGS = [
 
 function App() {
   const { language, setLanguage, t } = useI18n();
-  const { currentUser, userData, refreshUserData } = useAuth();
+  const { currentUser, userData, refreshUserData, getFreshWalletToken } = useAuth();
   const [chainConfig, setChainConfig] = useState<PublicChainConfig>(fallbackChainConfig);
   const [chainConfigError, setChainConfigError] = useState<string | null>(null);
   const [isChainConfigLoading, setIsChainConfigLoading] = useState(true);
+  const sendCurrentNetworkTransaction = async (input: MiniKitSendTransactionOptions<SendTransactionResult>) => {
+    if (isChainConfigLoading || chainConfigError) throw new Error('Token transactions are paused until the API switches to the current deployment.');
+    return MiniKit.sendTransaction(input);
+  };
   const WORLD_CHAIN_ID = chainConfig.chainId;
   const WORLD_CHAIN_LABEL = chainConfig.label;
   const ONBOARDING_MANAGER_ADDRESS = (chainConfig.contracts.onboardingManager || '') as `0x${string}`;
@@ -370,7 +380,21 @@ function App() {
   const [isLanguageOpen, setIsLanguageOpen] = useState(false);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeRegion, setActiveRegion] = useState(REGIONS[0]);
+  const [feedError, setFeedError] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [platformFilter, setPlatformFilter] = useState('all');
+  const [discoverySort, setDiscoverySort] = useState<DiscoverySort>('popular');
+  const [savedOnly, setSavedOnly] = useState(false);
+  const [savedIds, setSavedIds] = useState<string[]>(() => {
+    try { const saved = JSON.parse(localStorage.getItem('challengeon-saved') || '[]'); return Array.isArray(saved) ? saved.filter(id => typeof id === 'string') : []; }
+    catch { return []; }
+  });
+  const [autoplay, setAutoplay] = useState(() => localStorage.getItem('challengeon-autoplay') !== 'false');
+  const [muted, setMuted] = useState(() => localStorage.getItem('challengeon-muted') !== 'false');
+  const [activeRegion, setActiveRegion] = useState(() => {
+    const saved = localStorage.getItem('challengeon-region');
+    return saved && REGIONS.includes(saved) ? saved : REGIONS[0];
+  });
 
   // Interaction State
   const [expandedChallengeId, setExpandedChallengeId] = useState<string | null>(() => {
@@ -378,6 +402,7 @@ function App() {
   });
   const [challengeVideos, setChallengeVideos] = useState<Record<string, ChallengeOnVideo[]>>({});
   const [loadingVideos, setLoadingVideos] = useState<Record<string, boolean>>({});
+  const [videoErrors, setVideoErrors] = useState<Record<string, boolean>>({});
   const [selectedChallenge, setSelectedChallenge] = useState<Challenge | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [cameraEntryMode, setCameraEntryMode] = useState<'camera' | 'upload'>('camera');
@@ -425,6 +450,8 @@ function App() {
   const uploadVideoInputRef = useRef<HTMLInputElement>(null);
   const longPressTimer = useRef<any>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+  const feedRequestRef = useRef(0);
+  const settingsPanelRef = useRef<HTMLDivElement>(null);
   const announcementSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
   
   // History & Settings State
@@ -435,28 +462,32 @@ function App() {
   const [rankingPeriod, setRankingPeriod] = useState<'month' | 'quarter' | 'year'>('month');
   const [rankingToken, setRankingToken] = useState<'all' | 'UNON' | 'WLD'>('all');
   const [donationRankings, setDonationRankings] = useState<Array<{ creator: string; token_symbol: string; donated_amount: string; support_count: number }>>([]);
+  const [rankingLoading, setRankingLoading] = useState(false);
+  const [rankingError, setRankingError] = useState(false);
+  const [rankingRetry, setRankingRetry] = useState(0);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [userChallenges, setUserChallenges] = useState<Challenge[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [userVotes, setUserVotes] = useState<Record<string, string>>({});
   const [isClaiming, setIsClaiming] = useState(false);
+  const [welcomeProofRequest, setWelcomeProofRequest] = useState<WelcomeProofRequest | null>(null);
+  const [isPreparingWelcomeProof, setIsPreparingWelcomeProof] = useState(false);
+  const [claimAfterWelcomeProof, setClaimAfterWelcomeProof] = useState(false);
   const profileWalletAddress = [
     currentUser?.uid,
     getMiniKitWalletAddress(),
   ].find(isLikelyAddress) || null;
 
   const finalizeOnboardingClaim = async (claimHash?: string | null) => {
-    if (!currentUser || !db) return;
-
-    const userRef = doc(db, 'users', currentUser.uid);
-    await updateDoc(userRef, {
-      points: Math.max(userData?.points || 0, 100),
-      onboardingClaimed: true,
-      onboardingClaimPendingHash: null,
-      onboardingClaimPendingAt: null,
-      onboardingClaimTxHash: claimHash || null,
+    if (!currentUser || !claimHash) return;
+    const response = await fetch(apiUrl('/api/auth/onboarding-confirm'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getFreshWalletToken()}` },
+      body: JSON.stringify({ transactionHash: claimHash })
     });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || 'Reward confirmation failed');
 
     if (refreshUserData) await refreshUserData();
   };
@@ -520,84 +551,30 @@ function App() {
     return true;
   };
 
-  const handleClaimOnboarding = async () => {
-    if (!currentUser || isClaiming) return;
-    if (!profileWalletAddress) {
-      showToast('Wallet address is not ready yet. Please reopen this mini app from World App.');
-      return;
-    }
-    
-    if (!MiniKit.isInstalled()) {
-      showToast('🌐 You must open this application inside the World App to claim UNON.');
-      return;
-    }
-    
-    setIsClaiming(true);
+
+  const requestWelcomeProof = async (claimAfter = false) => {
+    if (!currentUser || !profileWalletAddress) throw new Error('Sign in with your wallet first.');
+    if (isChainConfigLoading || chainConfigError) throw new Error('Please wait until the current token network is available.');
+    setIsPreparingWelcomeProof(true);
     try {
-      showToast('✨ Generating Claim Signature...');
-      const res = await fetch(apiUrl('/api/auth/onboarding-signature'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: profileWalletAddress })
+      const proofResponse = await fetch(apiUrl('/api/auth/world-id/request'), {
+        method: 'POST', headers: { Authorization: `Bearer ${await getFreshWalletToken()}` }
       });
-      const data = await res.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to get signature');
+      const proofRequest = await proofResponse.json();
+      if (!proofResponse.ok) throw new Error(proofRequest.error || 'Human verification is unavailable');
+      if (proofRequest.verified === true) {
+        if (!claimAfter) {
+          await refreshUserData();
+          showToast('World ID verified.');
+        }
+        return true;
       }
-
-      showToast('📲 Please confirm the transaction in World App.');
-      
-      const ONBOARDING_ABI = [{
-        "inputs": [
-          { "internalType": "bytes32", "name": "identityNullifier", "type": "bytes32" },
-          { "internalType": "address", "name": "recipient", "type": "address" },
-          { "internalType": "bytes", "name": "signature", "type": "bytes" }
-        ],
-        "name": "claim",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-      }];
-      
-      // Execute the On-Chain Transaction via MiniKit
-      const transactionResult = await MiniKit.sendTransaction({
-        chainId: WORLD_CHAIN_ID,
-        transactions: [{
-          to: ONBOARDING_MANAGER_ADDRESS,
-          data: encodeFunctionData({
-            abi: ONBOARDING_ABI,
-            functionName: "claim",
-            args: [data.identityNullifier, profileWalletAddress, data.signature]
-          })
-        }]
-      });
-      
-      if (transactionResult?.data) {
-        showToast('🎉 100 UNON Reward Claimed Successfully! Welcome to the Arena!');
-        
-        // Update user's remote state on success
-        const userRef = doc(db, 'users', currentUser.uid);
-        await updateDoc(userRef, { 
-          points: 100,
-          onboardingClaimed: true 
-        });
-        
-        // Refresh local UI
-        if (refreshUserData) await refreshUserData();
-      } else {
-        throw new Error('Transaction rejected or failed.');
-      }
-      
-    } catch (error: any) {
-      console.error('Claim Error:', error);
-      showToast(`⚠️ Claim Failed: ${error.message}`);
-    } finally {
-      setIsClaiming(false);
-    }
+      if (proofRequest.signal !== profileWalletAddress.toLowerCase()) throw new Error('Sign in with the recipient wallet again.');
+      setClaimAfterWelcomeProof(claimAfter);
+      setWelcomeProofRequest(proofRequest);
+      return false;
+    } finally { setIsPreparingWelcomeProof(false); }
   };
-
-  void handleClaimOnboarding;
 
   const handleClaimOnboardingVerified = async () => {
     if (!currentUser || isClaiming) return;
@@ -623,10 +600,12 @@ function App() {
         }
       }
 
+      if (!await requestWelcomeProof(true)) return;
+      const claimToken = await getFreshWalletToken();
       showToast('Generating claim signature...');
       const res = await fetch(apiUrl('/api/auth/onboarding-signature'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${claimToken}` },
         body: JSON.stringify({ address: profileWalletAddress })
       });
       const data = await res.json();
@@ -665,7 +644,7 @@ function App() {
         throw new Error(`Claim simulation failed: ${getReadableErrorMessage(simulationError)}`);
       }
 
-      const transactionResult = await MiniKit.sendTransaction({
+      const transactionResult = await sendCurrentNetworkTransaction({
         chainId: WORLD_CHAIN_ID,
         transactions: [{
           to: ONBOARDING_MANAGER_ADDRESS,
@@ -678,13 +657,12 @@ function App() {
         throw new Error('Transaction rejected or failed before a claim hash was returned.');
       }
 
-      if (db) {
-        const userRef = doc(db, 'users', currentUser.uid);
-        await updateDoc(userRef, {
-          onboardingClaimPendingHash: claimHash,
-          onboardingClaimPendingAt: new Date().toISOString(),
-        });
-      }
+      const pendingResponse = await fetch(apiUrl('/api/auth/onboarding-pending'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getFreshWalletToken()}` },
+        body: JSON.stringify({ userOpHash: claimHash })
+      });
+      if (!pendingResponse.ok) showToast('Transaction submitted, but its pending status could not be saved.');
 
       const verified = await verifyPendingOnboardingClaim(claimHash);
       if (verified) {
@@ -698,7 +676,6 @@ function App() {
       console.error('Claim Error:', error);
 
       if (/already claimed/i.test(readableMessage)) {
-        await finalizeOnboardingClaim(userData?.onboardingClaimPendingHash || null);
         showToast(`This wallet already claimed the 100 UNON welcome bonus on ${WORLD_CHAIN_LABEL}.`);
         return;
       }
@@ -980,6 +957,10 @@ function App() {
   };
 
   const openSourceTrend = (challengeId: string) => {
+    setSearchQuery('');
+    setPlatformFilter('all');
+    setSavedOnly(false);
+    setActiveRegion(REGIONS[0]);
     setExpandedChallengeId(challengeId);
     localStorage.setItem('lastExpandedChallengeId', challengeId);
     setCurrentTab('trend');
@@ -999,11 +980,13 @@ function App() {
         void loadPrizeStatus(challenge.id);
       }
       if (!challengeVideos[videoKey] && !loadingVideos[videoKey]) {
+        setVideoErrors(prev => ({ ...prev, [videoKey]: false }));
         setLoadingVideos(prev => ({ ...prev, [videoKey]: true }));
         try {
           const videos = await getChallengeVideos(challenge.id, challenge.hashtags, mode);
           setChallengeVideos(prev => ({ ...prev, [videoKey]: videos }));
         } catch (e) {
+          setVideoErrors(prev => ({ ...prev, [videoKey]: true }));
           console.error("Scraping failed:", e);
         } finally {
           setLoadingVideos(prev => ({ ...prev, [videoKey]: false }));
@@ -1081,24 +1064,61 @@ function App() {
 
   useEffect(() => {
     loadChallenges();
-  }, [currentTab]);
+  }, []);
 
   useEffect(() => {
+    localStorage.setItem('challengeon-saved', JSON.stringify(savedIds));
+  }, [savedIds]);
+  useEffect(() => { localStorage.setItem('challengeon-region', activeRegion); }, [activeRegion]);
+  useEffect(() => { localStorage.setItem('challengeon-autoplay', String(autoplay)); }, [autoplay]);
+  useEffect(() => { localStorage.setItem('challengeon-muted', String(muted)); }, [muted]);
+  useEffect(() => {
+    if (!showSettingsModal) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const panel = settingsPanelRef.current;
+    const targets = () => Array.from(panel?.querySelectorAll<HTMLElement>('button, input, select') || []);
+    targets()[0]?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      const nodes = targets();
+      const first = nodes[0], last = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', trap);
+    return () => { document.removeEventListener('keydown', trap); previous?.focus(); };
+  }, [showSettingsModal]);
+  useEffect(() => {
+    const dismiss = () => { setIsRegionOpen(false); setIsLanguageOpen(false); };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { dismiss(); setShowSettingsModal(false); }
+    };
+    document.addEventListener('click', dismiss);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('click', dismiss); document.removeEventListener('keydown', escape); };
+  }, []);
+
+  useEffect(() => {
+    if (currentTab !== 'rankings') return;
+    const controller = new AbortController();
     const loadDonationRankings = async () => {
+      setRankingLoading(true);
+      setRankingError(false);
       try {
-        const res = await fetch(apiUrl(`/api/rankings/donations?period=${rankingPeriod}&token=${rankingToken}`));
+        const res = await fetch(apiUrl(`/api/rankings/donations?period=${rankingPeriod}&token=${rankingToken}`), { signal: controller.signal });
+        if (!res.ok) throw new Error('Ranking request failed');
         const data = await res.json();
-        if (data.success) {
-          setDonationRankings(data.data || []);
-        }
+        if (!data.success || !Array.isArray(data.data)) throw new Error('Invalid ranking response');
+        setDonationRankings(data.data);
       } catch (error) {
-        console.error('Donation ranking load error:', error);
+        if (!controller.signal.aborted) { setRankingError(true); setDonationRankings([]); }
+      } finally {
+        if (!controller.signal.aborted) setRankingLoading(false);
       }
     };
-    if (currentTab === 'rankings') {
-      void loadDonationRankings();
-    }
-  }, [currentTab, rankingPeriod, rankingToken]);
+    void loadDonationRankings();
+    return () => controller.abort();
+  }, [currentTab, rankingPeriod, rankingToken, rankingRetry]);
 
   const loadUserHistory = async () => {
     if (!currentUser) return;
@@ -1125,22 +1145,25 @@ function App() {
   useEffect(() => {
     if (expandedChallengeId && challenges.length > 0) {
       const challenge = challenges.find(c => c.id === expandedChallengeId);
-      if (challenge && !challengeVideos[challenge.id] && !loadingVideos[challenge.id]) {
+      const mode = ['trend', 'battle', 'now'].includes(currentTab) ? currentTab as 'trend' | 'battle' | 'now' : undefined;
+      const videoKey = mode ? getOnVideoKey(expandedChallengeId, mode) : expandedChallengeId;
+      if (challenge && !challengeVideos[videoKey] && !loadingVideos[videoKey] && !videoErrors[videoKey]) {
         const fetchVideos = async () => {
-          setLoadingVideos(prev => ({ ...prev, [challenge.id]: true }));
+          setLoadingVideos(prev => ({ ...prev, [videoKey]: true }));
           try {
-            const videos = await getChallengeVideos(challenge.id, challenge.hashtags);
-            setChallengeVideos(prev => ({ ...prev, [challenge.id]: videos }));
+            const videos = await getChallengeVideos(challenge.id, challenge.hashtags, mode);
+            setChallengeVideos(prev => ({ ...prev, [videoKey]: videos }));
           } catch (e) {
+            setVideoErrors(prev => ({ ...prev, [videoKey]: true }));
             console.error("Auto-Scraping failed:", e);
           } finally {
-            setLoadingVideos(prev => ({ ...prev, [challenge.id]: false }));
+            setLoadingVideos(prev => ({ ...prev, [videoKey]: false }));
           }
         };
         fetchVideos();
       }
     }
-  }, [expandedChallengeId, challenges]);
+  }, [expandedChallengeId, challenges, currentTab, videoErrors]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1252,43 +1275,31 @@ function App() {
   ]);
 
   const loadChallenges = async () => {
+    const request = ++feedRequestRef.current;
     setIsLoading(true);
-    const [challengeData, announcementData, displaySettings] = await Promise.all([
+    setFeedError(false);
+    try {
+      const [challengeData, announcementData, displaySettings] = await Promise.all([
       getChallenges(),
       getAnnouncements(),
       getPublicSettings()
     ]);
+    if (request !== feedRequestRef.current) return;
     setChallenges(challengeData);
     setAnnouncements(announcementData);
     setPublicDisplaySettings(displaySettings);
     setAnnouncementIndex(0);
-    setIsLoading(false);
+    } catch {
+      if (request === feedRequestRef.current) setFeedError(true);
+    } finally {
+      if (request === feedRequestRef.current) setIsLoading(false);
+    }
   };
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(''), 3000);
   };
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    requestInitialMicrophoneAccess()
-      .then(() => {
-        if (!isCancelled && MiniKit.isInstalled()) {
-          console.log('World App microphone permission is ready.');
-        }
-      })
-      .catch((error) => {
-        if (isCancelled) return;
-        console.warn('Initial microphone permission failed:', error);
-        showToast('Microphone permission is required for challenge recording.');
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
 
   const openJoinChallengeModal = (challenge: Challenge, options: { keepRemixSource?: boolean } = {}) => {
     if (!options.keepRemixSource) setSelectedRemixSource(null);
@@ -1310,6 +1321,7 @@ function App() {
     setCameraPermissionError('');
 
     try {
+      if (mode === 'camera') await requestInitialMicrophoneAccess();
       await joinChallenge(selectedChallenge.id);
       setChallenges(prev =>
         prev.map(c => (c.id === selectedChallenge.id ? { ...c, participants: c.participants + 1 } : c))
@@ -1410,7 +1422,7 @@ function App() {
     });
 
     showToast('Confirm prize entry registration in World App.');
-    const transactionResult = await MiniKit.sendTransaction({
+    const transactionResult = await sendCurrentNetworkTransaction({
       chainId: WORLD_CHAIN_ID,
       transactions: [{ to: entryRegistration.prizeManagerAddress, data: registrationCalldata }]
     });
@@ -1663,7 +1675,7 @@ function App() {
       transactions.push({ to: UNON_TOKEN_ADDRESS, data: approveCalldata });
       transactions.push({ to: UNON_PRIZE_MANAGER_ADDRESS, data: createCalldata });
 
-      const transactionResult = await MiniKit.sendTransaction({
+      const transactionResult = await sendCurrentNetworkTransaction({
         chainId: WORLD_CHAIN_ID,
         transactions
       });
@@ -1811,7 +1823,7 @@ function App() {
       });
 
       showToast('Confirm 1 UNON vote in World App.');
-      const transactionResult = await MiniKit.sendTransaction({
+      const transactionResult = await sendCurrentNetworkTransaction({
         chainId: WORLD_CHAIN_ID,
         transactions: [
           { to: UNON_TOKEN_ADDRESS, data: approveCalldata },
@@ -1867,7 +1879,7 @@ function App() {
         args: [challenge.prizeOnchainChallengeId as `0x${string}`]
       });
       showToast('Confirm prize finalization in World App.');
-      const transactionResult = await MiniKit.sendTransaction({
+      const transactionResult = await sendCurrentNetworkTransaction({
         chainId: WORLD_CHAIN_ID,
         transactions: [{ to: UNON_PRIZE_MANAGER_ADDRESS, data: finalizeCalldata }]
       });
@@ -1909,7 +1921,7 @@ function App() {
         args: [challenge.prizeOnchainChallengeId as `0x${string}`]
       });
       showToast('Confirm voter reward claim in World App.');
-      const transactionResult = await MiniKit.sendTransaction({
+      const transactionResult = await sendCurrentNetworkTransaction({
         chainId: WORLD_CHAIN_ID,
         transactions: [{ to: UNON_PRIZE_MANAGER_ADDRESS, data: claimCalldata }]
       });
@@ -2123,10 +2135,6 @@ function App() {
       [challengeId]: (prev[challengeId] || []).filter(v => v.id !== videoId)
     }));
 
-    fetch(apiUrl(`/api/videos/${videoId}`), { method: 'DELETE' }).catch(err => {
-      console.error("Failed to delete unplayable video:", err);
-    });
-
     if (remainingCount > 0) {
       const nextVideoIndex = Math.min(videoIndex, remainingCount - 1);
       setActiveVideoIndex(prev => ({ ...prev, [challengeId]: nextVideoIndex }));
@@ -2288,10 +2296,6 @@ function App() {
         ...prev,
         [challengeId]: (prev[challengeId] || []).filter(v => v.id !== videoId)
       }));
-
-      fetch(apiUrl(`/api/videos/${videoId}`), { method: 'DELETE' }).catch(err => {
-        console.error("Failed to delete unplayable video:", err);
-      });
 
       if (remainingCount > 0) {
         const nextVideoIndex = Math.min(videoIndex, remainingCount - 1);
@@ -3452,30 +3456,10 @@ function App() {
   void _renderHome;
 
   const getOnChallenges = (mode: 'trend' | 'battle' | 'now') => {
-    const fallbackMode = (challenge: Challenge) => challenge.challengeType === 'prize' ? 'battle' : 'trend';
-    return challenges
-      .filter(challenge => {
-        const challengeMode = challenge.challengeMode || fallbackMode(challenge);
-        if (mode === 'battle') {
-          return challengeMode === 'battle' || (challenge.userVideoCount || 0) > 0;
-        }
-        if (mode === 'trend') {
-          return challengeMode === 'trend' && (challenge.externalVideoCount ?? challenge.videoCount ?? 0) > 0;
-        }
-        return challengeMode === mode;
-      })
-      .filter(challenge => activeRegion === REGIONS[0] || challenge.region === activeRegion || challenge.region === REGIONS[0])
-      .sort((a, b) => {
-        if (mode === 'battle') {
-          const aPrize = a.challengeType === 'prize' ? 1 : 0;
-          const bPrize = b.challengeType === 'prize' ? 1 : 0;
-          if (aPrize !== bPrize) return bPrize - aPrize;
-          const aUserVideos = a.userVideoCount || 0;
-          const bUserVideos = b.userVideoCount || 0;
-          if (aUserVideos !== bUserVideos) return bUserVideos - aUserVideos;
-        }
-        return (b.viralScore || 0) - (a.viralScore || 0);
-      });
+    return discoverChallenges(challenges, {
+      mode, region: activeRegion, query: searchQuery,
+      platform: mode === 'trend' ? platformFilter : 'all', sort: discoverySort, savedOnly, savedIds
+    });
   };
 
   const renderOnChallengeVideos = (challenge: Challenge, mode: 'trend' | 'battle' | 'now') => {
@@ -3500,13 +3484,19 @@ function App() {
             {loadingVideos[videoKey] ? (
               <div className="on-video-state">
                 <TrendingUp size={30} className="spinning" />
-                <span>Loading videos...</span>
+                <span>{t('loadingVideos')}</span>
+              </div>
+            ) : videoErrors[videoKey] ? (
+              <div className="on-video-state" role="alert">
+                <strong>{t('videoError')}</strong>
+                <button className="on-primary-action" onClick={() => setVideoErrors(prev => ({ ...prev, [videoKey]: false }))}>
+                  <RefreshCw size={16} /> {t('retry')}
+                </button>
               </div>
             ) : (videos.length === 0) ? (
               <div className="on-video-state">
                 <Video size={34} />
-                <strong>No videos yet</strong>
-                <span>{mode === 'trend' ? 'Only external trend videos are shown here.' : 'User entries will appear here after upload.'}</span>
+                <strong>{t('noVideos')}</strong>
               </div>
             ) : (
               videos.map((video, index) => (
@@ -3514,7 +3504,7 @@ function App() {
                   key={video.id}
                   id={`video-${videoKey}-${index}`}
                   className={`video-card-wrapper ${activeIndex === index ? 'active' : ''}`}
-                  style={{ height: 'calc(100dvh - 340px)', minHeight: '440px' }}
+                  style={{ height: 'min(660px, 72dvh)', minHeight: '320px' }}
                 >
                   <div className="video-sidebar">
                     <div className="video-sidebar-item" style={{ gap: '24px', marginTop: 'auto' }}>
@@ -3583,7 +3573,8 @@ function App() {
                     </AnimatePresence>
                     <VideoPlayer
                       video={video}
-                      isMuted={false}
+                      isMuted={muted}
+                      autoplay={autoplay}
                       isActive={activeIndex === index}
                       shouldPreload={shouldKeepVideoWarm(videoKey, index)}
                       onDelete={() => handleOnVideoUnavailable(videoKey, video.id, index)}
@@ -3611,13 +3602,24 @@ function App() {
       className={`on-card-shell ${expandedChallengeId === challenge.id ? 'expanded' : ''} ${challenge.challengeType === 'prize' ? 'platinum' : ''}`}
       id={`challenge-${challenge.id}`}
     >
-      <motion.div className="on-card" whileTap={{ scale: 0.99 }} onClick={() => toggleExpand(challenge, mode)}>
-        <div className="on-card-topline">
+      <div className="on-card">
+        <button type="button" className="on-card-open" aria-label={challenge.title} aria-expanded={expandedChallengeId === challenge.id} onClick={() => toggleExpand(challenge, mode)}>
+          <span className="on-card-cover">
+            <img src={challenge.thumbnailUrl || brandIcon} alt="" loading="lazy" referrerPolicy="no-referrer" onError={event => {
+              if (event.currentTarget.classList.contains('brand-cover')) return;
+              event.currentTarget.src = brandIcon;
+              event.currentTarget.classList.add('brand-cover');
+            }} className={challenge.thumbnailUrl ? '' : 'brand-cover'} />
+            <span className="on-card-play"><Play size={18} fill="currentColor" /></span>
+            <span className="on-card-region"><MapPin size={12} /> {challenge.region || 'Global'}</span>
+          </span>
+        <span className="on-card-topline">
           <span>{mode === 'trend' ? 'TREND ON' : mode === 'battle' ? 'BATTLE ON' : 'NOW ON'}</span>
           <small>{challenge.challengeType === 'prize' ? 'PLATINUM CHALLENGE' : mode === 'trend' && challenge.platforms?.length ? challenge.platforms.map(platform => platform === 'youtube' ? 'Shorts' : platform === 'instagram' ? 'Reels' : 'TikTok').join(' · ') : (challenge.region || 'Global')}</small>
-        </div>
-        <h3>{challenge.title}</h3>
-        <p>{challenge.notice || challenge.hashtags}</p>
+        </span>
+        <strong className="on-card-title">{challenge.title}</strong>
+        <span className="on-card-description">{challenge.notice || challenge.hashtags}</span>
+        </button>
         <div className="on-card-meta">
           <span><Video size={14} /> {mode === 'battle' ? (challenge.userVideoCount || 0) : mode === 'trend' ? (challenge.externalVideoCount ?? challenge.videoCount ?? 0) : (challenge.videoCount || 0)}</span>
           <span><Flame size={14} /> {formatScore(challenge.viralScore || 0)}</span>
@@ -3649,6 +3651,11 @@ function App() {
               </button>
             </>
           )}
+          {mode !== 'trend' && (
+            <button type="button" className="try-on-inline-btn" onClick={() => openJoinChallengeModal(challenge)}>
+              <UploadCloud size={15} /> {t('joinChallenge')}
+            </button>
+          )}
           {mode === 'battle' && sourceChallengeId && sourceTitle && (
             <button
               type="button"
@@ -3664,8 +3671,13 @@ function App() {
           {mode === 'battle' && challenge.challengeType === 'prize' && (
             <span className="platinum-inline-badge"><Crown size={14} /> Platinum+</span>
           )}
+          <button type="button" className={`icon-action save-challenge ${savedIds.includes(challenge.id) ? 'active' : ''}`}
+            aria-label={t(savedIds.includes(challenge.id) ? 'unsave' : 'save')} title={t(savedIds.includes(challenge.id) ? 'unsave' : 'save')}
+            aria-pressed={savedIds.includes(challenge.id)} onClick={() => setSavedIds(prev => prev.includes(challenge.id) ? prev.filter(id => id !== challenge.id) : [...prev, challenge.id])}>
+            <Bookmark size={17} fill={savedIds.includes(challenge.id) ? 'currentColor' : 'none'} />
+          </button>
         </div>
-      </motion.div>
+      </div>
       {renderOnChallengeVideos(challenge, mode)}
       </div>
     );
@@ -3695,12 +3707,11 @@ function App() {
     const items = getOnChallenges(mode);
 
     return (
-      <div className="on-page" ref={feedRef}>
+      <div className={`on-page mode-${mode}`} ref={feedRef}>
         <section className="on-hero">
           <div>
             <span>{copy.kicker}</span>
             <h1>{copy.title}</h1>
-            <p>{copy.summary}</p>
           </div>
           {mode === 'now' && (
             <button type="button" className="on-primary-action" onClick={() => setCurrentTab('create')}>
@@ -3713,6 +3724,25 @@ function App() {
             </button>
           )}
         </section>
+
+        <div className="discovery-toolbar">
+          <div className="discovery-segments" role="group" aria-label={t('browseChallenges')}>
+            <button type="button" className={!savedOnly ? 'active' : ''} aria-pressed={!savedOnly} onClick={() => setSavedOnly(false)}>{t('allChallenges')}</button>
+            <button type="button" className={savedOnly ? 'active' : ''} aria-pressed={savedOnly} onClick={() => setSavedOnly(true)}><Bookmark size={14} /> {t('saved')}</button>
+          </div>
+          {mode === 'trend' && <select aria-label={t('platform')} value={platformFilter} onChange={event => setPlatformFilter(event.target.value)}>
+            <option value="all">{t('allPlatforms')}</option><option value="youtube">YouTube</option><option value="instagram">Instagram</option><option value="tiktok">TikTok</option>
+          </select>}
+          <select aria-label={t('sortChallenges')} value={discoverySort} onChange={event => setDiscoverySort(event.target.value as DiscoverySort)}>
+            <option value="popular">{t('popular')}</option><option value="recent">{t('recent')}</option><option value="videos">{t('mostVideos')}</option>
+          </select>
+          <button type="button" className="icon-action" title={t('refresh')} aria-label={t('refresh')} disabled={isLoading} onClick={() => void loadChallenges()}><RefreshCw size={17} className={isLoading ? 'spinning' : ''} /></button>
+          <button type="button" className="icon-action" title={t('settings')} aria-label={t('settings')} onClick={() => setShowSettingsModal(true)}><Settings size={17} /></button>
+        </div>
+        <div className="discovery-results" aria-live="polite">
+          <span>{t('resultCount', { count: items.length })}</span>
+          {searchQuery && <button type="button" onClick={() => setSearchQuery('')}><X size={14} /> {searchQuery}</button>}
+        </div>
 
         {mode === 'now' && (
           <section className="on-tutorial">
@@ -3731,9 +3761,13 @@ function App() {
           </section>
         )}
 
-        <section className="on-grid">
-          {items.length > 0 ? items.map(item => renderOnChallengeCard(item, mode)) : (
-            <div className="on-empty">{copy.empty}</div>
+        {feedError && <div className="feed-error" role="alert"><span>{t('feedError')}</span><button type="button" onClick={() => void loadChallenges()}><RefreshCw size={15} /> {t('retry')}</button></div>}
+        <section className="on-grid" aria-busy={isLoading} aria-label={copy.title}>
+          {isLoading && challenges.length === 0 ? Array.from({ length: 6 }, (_, i) => <div key={i} className="discovery-skeleton" aria-label={t('loadingVideos')} />)
+            : items.length > 0 ? items.map(item => renderOnChallengeCard(item, mode)) : !feedError && (
+            <div className="on-empty"><Search size={24} /><strong>{searchQuery || savedOnly || platformFilter !== 'all' ? t('noResults') : copy.empty}</strong>
+              {(searchQuery || savedOnly || platformFilter !== 'all' || activeRegion !== REGIONS[0]) && <button type="button" onClick={() => { setSearchQuery(''); setSavedOnly(false); setPlatformFilter('all'); setActiveRegion(REGIONS[0]); }}>{t('resetFilters')}</button>}
+            </div>
           )}
         </section>
       </div>
@@ -3751,18 +3785,20 @@ function App() {
       </section>
       <div className="ranking-controls">
         {(['month', 'quarter', 'year'] as const).map(period => (
-          <button key={period} className={rankingPeriod === period ? 'active' : ''} onClick={() => setRankingPeriod(period)}>
+          <button type="button" key={period} aria-pressed={rankingPeriod === period} className={rankingPeriod === period ? 'active' : ''} onClick={() => setRankingPeriod(period)}>
             {t(period)}
           </button>
         ))}
         {(['all', 'UNON', 'WLD'] as const).map(token => (
-          <button key={token} className={rankingToken === token ? 'active' : ''} onClick={() => setRankingToken(token)}>
+          <button type="button" key={token} aria-pressed={rankingToken === token} className={rankingToken === token ? 'active' : ''} onClick={() => setRankingToken(token)}>
             {token}
           </button>
         ))}
       </div>
-      <div className="ranking-list">
-        {donationRankings.length > 0 ? donationRankings.map((row, index) => (
+      <div className="ranking-list" aria-busy={rankingLoading}>
+        {rankingLoading ? <div className="on-video-state"><RefreshCw className="spinning" size={24} /></div>
+          : rankingError ? <div className="feed-error" role="alert"><span>{t('rankingError')}</span><button type="button" onClick={() => setRankingRetry(prev => prev + 1)}><RefreshCw size={15} /> {t('retry')}</button></div>
+          : donationRankings.length > 0 ? donationRankings.map((row, index) => (
           <div key={`${row.creator}-${row.token_symbol}-${index}`} className="ranking-row">
             <div className="ranking-position">{index + 1}</div>
             <div>
@@ -3797,8 +3833,9 @@ function App() {
       ? Math.max(0, Math.min(100, ((numericUnonBalance - previousUnonThreshold) / (nextUnonBadgeTier.minBalance - previousUnonThreshold)) * 100))
       : 100;
     const hasPendingWelcomeBonusClaim = !!userData?.onboardingClaimPendingHash;
-    const hasClaimedWelcomeBonus = !!userData?.onboardingClaimed || (!isUnonBalanceLoading && numericUnonBalance >= 100);
-    const canClaimWelcomeBonus = !!profileWalletAddress && (hasPendingWelcomeBonusClaim || (!isUnonBalanceLoading && !hasClaimedWelcomeBonus));
+    const hasClaimedWelcomeBonus = !!userData?.onboardingClaimed;
+    const welcomeRewardsEnabled = chainConfig.features?.onboarding === true;
+    const canClaimWelcomeBonus = !!profileWalletAddress && (hasPendingWelcomeBonusClaim || (welcomeRewardsEnabled && !isUnonBalanceLoading && !hasClaimedWelcomeBonus));
 
     return (
       <div className="page-container profile-container">
@@ -3811,7 +3848,7 @@ function App() {
             <div style={{ width: '80px', height: '80px', background: 'rgba(255,255,255,0.05)', borderRadius: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px auto' }}>
               <div className="loading-spinner" style={{ width: '40px', height: '40px', borderTopColor: 'var(--primary)' }} />
             </div>
-            <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '12px' }}>Preparing Your World ID Profile</h2>
+            <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '12px' }}>Preparing Your World App Profile</h2>
             <p style={{ color: '#888', marginBottom: '12px' }}>This mini app authenticates automatically inside World App.</p>
             <p style={{ color: '#666', margin: 0, fontSize: '13px' }}>If this screen does not move forward, reopen the mini app from World App and try again.</p>
           </motion.div>
@@ -3978,7 +4015,7 @@ function App() {
                 )}
                 {!canClaimWelcomeBonus && !isUnonBalanceLoading && (
                   <div style={{ marginTop: '16px', padding: '14px 16px', borderRadius: '14px', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.25)', color: '#bbf7d0', fontSize: '13px', lineHeight: 1.5 }}>
-                    Your 100 UNON welcome bonus has already been claimed for this wallet.
+                    {hasClaimedWelcomeBonus ? 'Your 100 UNON welcome bonus has already been claimed for this wallet.' : 'Welcome rewards are temporarily paused.'}
                   </div>
                 )}
               </motion.div>
@@ -3998,6 +4035,15 @@ function App() {
             </div>
 
             <div className="profile-menu-container">
+              {userData?.worldIdVerified ? (
+                <div className="profile-menu-item"><Shield size={18} /><span>World ID verified</span></div>
+              ) : (
+                <button className="profile-menu-item"
+                  disabled={isPreparingWelcomeProof || !!welcomeProofRequest || isChainConfigLoading || !!chainConfigError}
+                  onClick={() => { void requestWelcomeProof(false).catch(error => showToast(getReadableErrorMessage(error))); }}>
+                  <Shield size={18} /><span>{isPreparingWelcomeProof ? 'Preparing verification...' : 'Verify World ID'}</span>
+                </button>
+              )}
               <button className="profile-menu-item" onClick={() => setShowHistoryModal(true)}>
                 <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '12px' }}><Trophy size={18} /></div>
                 <span>My Arena History</span>
@@ -4020,12 +4066,35 @@ function App() {
   };
 
   return (
+    <MotionConfig reducedMotion="user">
+    {welcomeProofRequest && currentUser && welcomeProofRequest.signal === currentUser.uid.toLowerCase() && (
+      <WorldIdWelcomeVerification
+        request={welcomeProofRequest}
+        user={currentUser}
+        onClose={() => setWelcomeProofRequest(null)}
+        onVerified={() => {
+          setWelcomeProofRequest(null);
+          if (claimAfterWelcomeProof) void handleClaimOnboardingVerified();
+          else {
+            void refreshUserData();
+            showToast('World ID verified.');
+          }
+        }}
+        onError={(message) => {
+          setWelcomeProofRequest(null);
+          showToast(message);
+        }}
+      />
+    )}
     <div className="app-container">
       <header className="header">
-        <div className="logo-container" onClick={() => setCurrentTab('trend')}>
-          <div className="logo-icon">U</div>
-        </div>
-        <div className="search-bar-container"><Search size={16} className="search-icon" /><input type="text" placeholder={t('search')} className="search-input" /></div>
+        <button type="button" className="logo-container" aria-label="Challenge ON" onClick={() => setCurrentTab('trend')}>
+          <img className="brand-mark" src={brandIcon} alt="" /><span className="brand-name">Challenge ON</span>
+        </button>
+        <div className="search-bar-container"><Search size={16} className="search-icon" /><input type="search" placeholder={t('search')} aria-label={t('search')} className="search-input" value={searchQuery} onChange={event => {
+          setSearchQuery(event.target.value);
+          if (!['trend', 'battle', 'now'].includes(currentTab)) setCurrentTab('trend');
+        }} /></div>
         <div className="header-right-group">
           <div className="user-points"><Flame size={14} color="#00ffff" /><span>{userData?.points || 0}</span></div>
           <button type="button" className="profile-shortcut" onClick={() => setCurrentTab('profile')} aria-label={t('openProfile')}>
@@ -4041,6 +4110,7 @@ function App() {
                 setIsRegionOpen(false);
               }}
               aria-label={t('selectLanguage')}
+              aria-expanded={isLanguageOpen}
               title={t('selectLanguage')}
             >
               <Languages size={16} />
@@ -4072,9 +4142,9 @@ function App() {
             </AnimatePresence>
           </div>
           <div className="region-selector-container">
-            <motion.div className={`region-selector-trigger ${isRegionOpen ? 'open' : ''}`} onClick={(e) => { e.stopPropagation(); setIsRegionOpen(!isRegionOpen); setIsLanguageOpen(false); }} whileTap={{ scale: 0.95 }}>
+            <motion.button type="button" aria-label={t('territory')} aria-expanded={isRegionOpen} className={`region-selector-trigger ${isRegionOpen ? 'open' : ''}`} onClick={(e) => { e.stopPropagation(); setIsRegionOpen(!isRegionOpen); setIsLanguageOpen(false); }} whileTap={{ scale: 0.95 }}>
               <MapPin size={12} className="region-icon" /><span className="region-name" style={{ fontSize: '12px' }}>{activeRegion === 'Southeast Asia' ? 'SEA' : (activeRegion.split(' ').pop() || activeRegion)}</span><ChevronDown size={12} className={`chevron-icon ${isRegionOpen ? 'rotate' : ''}`} />
-            </motion.div>
+            </motion.button>
             <AnimatePresence>
               {isRegionOpen && (
                 <motion.div className="region-dropdown-list" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} style={{ right: 0, top: 'calc(100% + 10px)', width: '160px' }}>
@@ -4093,11 +4163,11 @@ function App() {
                     });
 
                     return sortedRegions.map(region => (
-                      <div key={region} className={`region-option ${activeRegion === region ? 'selected' : ''}`} onClick={() => { setActiveRegion(region); setIsRegionOpen(false); }}>
+                      <button type="button" key={region} aria-pressed={activeRegion === region} className={`region-option ${activeRegion === region ? 'selected' : ''}`} onClick={() => { setActiveRegion(region); setIsRegionOpen(false); }}>
                         <span style={{ flex: 1 }}>{region}</span>
                         <span style={{ fontSize: '10px', opacity: 0.5, marginLeft: '8px' }}>{(counts[region] || (region === REGIONS[0] ? challenges.length : 0))}</span>
                         {activeRegion === region && <div className="selected-dot" />}
-                      </div>
+                      </button>
                     ));
                   })()}
                 </motion.div>
@@ -4190,30 +4260,30 @@ function App() {
         {showSettingsModal && (
           <div className="modal-overlay" style={{ zIndex: 3000 }} onClick={() => setShowSettingsModal(false)}>
             <motion.div 
-              className="modal-content" 
+              className="modal-content settings-panel"
+              ref={settingsPanelRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="settings-title"
               onClick={e => e.stopPropagation()}
-              initial={{ y: '100dvh' }} 
-              animate={{ y: 0 }} 
+              initial={{ y: '100dvh' }}
+              animate={{ y: 0 }}
               exit={{ y: '100dvh' }}
-              style={{ height: '65dvh', padding: '24px', background: 'rgba(10, 10, 10, 0.95)', backdropFilter: 'blur(30px)', borderRadius: '32px 32px 0 0', borderTop: '1px solid var(--secondary)' }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <Settings size={20} color="var(--secondary)" />
-                  <h2 style={{ fontSize: '20px', color: '#fff', fontWeight: '900' }}>{t('settings')}</h2>
+                  <h2 id="settings-title" style={{ fontSize: '20px', color: '#fff', fontWeight: '900' }}>{t('settings')}</h2>
                 </div>
-                <button onClick={() => setShowSettingsModal(false)} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#fff', width: '36px', height: '36px', borderRadius: '18px' }}><X size={20} /></button>
+                <button className="icon-action" aria-label={t('close')} onClick={() => setShowSettingsModal(false)}><X size={20} /></button>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <h4 style={{ fontSize: '14px', marginBottom: '4px', color: '#fff' }}>{t('profileVisibility')}</h4>
-                  <p style={{ fontSize: '12px', color: '#888' }}>{t('profileVisibilityBody')}</p>
-                </div>
-                <div style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <h4 style={{ fontSize: '14px', marginBottom: '4px', color: '#fff' }}>{t('territoryPreference')}</h4>
-                  <p style={{ fontSize: '12px', color: '#888' }}>{t('optimizedFor', { region: activeRegion })}</p>
-                </div>
+                <h3 className="settings-subtitle">{t('playbackSettings')}</h3>
+                <label className="preference-row"><span><Play size={17} /> {t('autoplay')}</span><input type="checkbox" role="switch" checked={autoplay} onChange={event => setAutoplay(event.target.checked)} /></label>
+                <label className="preference-row"><span>{muted ? <VolumeX size={17} /> : <Volume2 size={17} />} {t('startMuted')}</span><input type="checkbox" role="switch" checked={muted} onChange={event => setMuted(event.target.checked)} /></label>
+                <label className="preference-row"><span><MapPin size={17} /> {t('territoryPreference')}</span><select value={activeRegion} onChange={event => setActiveRegion(event.target.value)}>{REGIONS.map(region => <option key={region}>{region}</option>)}</select></label>
+                <label className="preference-row"><span><Languages size={17} /> {t('selectLanguage')}</span><select value={language} onChange={event => setLanguage(event.target.value as typeof language)}>{SUPPORTED_LANGUAGES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}</select></label>
                 <div style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', marginTop: '20px' }}>
                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--secondary)' }}>
                      <TrendingUp size={16} />
@@ -4361,12 +4431,12 @@ function App() {
         )}
       </AnimatePresence>
 
-      <nav className="bottom-nav">
-        <div className={`nav-item ${currentTab === 'trend' ? 'active' : ''}`} onClick={() => { setCurrentTab('trend'); }}><TrendingUp size={22} className="nav-icon" /><span className="nav-label">{t('navTrend')}</span></div>
-        <div className={`nav-item ${currentTab === 'battle' ? 'active' : ''}`} onClick={() => { setCurrentTab('battle'); }}><Trophy size={22} className="nav-icon" /><span className="nav-label">{t('navBattle')}</span></div>
-        <div className="nav-item" onClick={() => { setCurrentTab('create'); }}><div className={`logo-icon ${currentTab === 'create' ? 'active' : ''}`} style={{ width: '40px', height: '40px' }}><PlusCircle size={28} /></div><span className="nav-label">{t('navCreate')}</span></div>
-        <div className={`nav-item ${currentTab === 'now' ? 'active' : ''}`} onClick={() => { setCurrentTab('now'); }}><Zap size={22} className="nav-icon" /><span className="nav-label">{t('navNow')}</span></div>
-        <div className={`nav-item ${currentTab === 'rankings' ? 'active' : ''}`} onClick={() => { setCurrentTab('rankings'); }}><Crown size={22} className="nav-icon" /><span className="nav-label">{t('navRanking')}</span></div>
+      <nav className="bottom-nav" aria-label="Challenge ON">
+        <button type="button" aria-current={currentTab === 'trend' ? 'page' : undefined} className={`nav-item ${currentTab === 'trend' ? 'active' : ''}`} onClick={() => setCurrentTab('trend')}><TrendingUp size={22} className="nav-icon" /><span className="nav-label">{t('navTrend')}</span></button>
+        <button type="button" aria-current={currentTab === 'battle' ? 'page' : undefined} className={`nav-item ${currentTab === 'battle' ? 'active' : ''}`} onClick={() => setCurrentTab('battle')}><Trophy size={22} className="nav-icon" /><span className="nav-label">{t('navBattle')}</span></button>
+        <button type="button" aria-current={currentTab === 'create' ? 'page' : undefined} className={`nav-item ${currentTab === 'create' ? 'active' : ''}`} onClick={() => setCurrentTab('create')}><PlusCircle size={28} className="nav-icon create-icon" /><span className="nav-label">{t('navCreate')}</span></button>
+        <button type="button" aria-current={currentTab === 'now' ? 'page' : undefined} className={`nav-item ${currentTab === 'now' ? 'active' : ''}`} onClick={() => setCurrentTab('now')}><Zap size={22} className="nav-icon" /><span className="nav-label">{t('navNow')}</span></button>
+        <button type="button" aria-current={currentTab === 'rankings' ? 'page' : undefined} className={`nav-item ${currentTab === 'rankings' ? 'active' : ''}`} onClick={() => setCurrentTab('rankings')}><Crown size={22} className="nav-icon" /><span className="nav-label">{t('navRanking')}</span></button>
       </nav>
 
       <input
@@ -4379,7 +4449,7 @@ function App() {
 
       <AnimatePresence>
         {toast && (
-          <motion.div
+          <motion.div role="status"
             className="toast"
             initial={{ y: -24, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -4392,10 +4462,13 @@ function App() {
       </AnimatePresence>
 
       {showAdminPanel && currentUser && (
-        <AdminPanel currentUser={currentUser} onClose={() => setShowAdminPanel(false)} />
+        <React.Suspense fallback={<div className="modal-overlay"><div className="on-video-state">{t('loadingVideos')}</div></div>}>
+        <AdminPanel currentUser={currentUser} onClose={() => { setShowAdminPanel(false); void loadChallenges(); }} />
+        </React.Suspense>
       )}
 
       {showCamera && selectedChallenge && (
+        <React.Suspense fallback={<div className="modal-overlay"><div className="on-video-state">{t('loadingVideos')}</div></div>}>
         <CameraCapture 
            challengeTitle={selectedChallenge.title} 
            challengeId={selectedChallenge.id}
@@ -4413,6 +4486,7 @@ function App() {
            }} 
            onRecordingComplete={handleVideoUploadComplete} 
         />
+        </React.Suspense>
       )}
 
       {showUploadGuidanceModal && selectedChallenge && !showCamera && (
@@ -4615,6 +4689,7 @@ function App() {
       )}
 
     </div>
+    </MotionConfig>
   );
 }
 

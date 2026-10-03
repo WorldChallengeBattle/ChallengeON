@@ -4,12 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:discovery": "node scripts/discovery.test.ts && node scripts/playback-safety.test.cjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@worldcoin/idkit": "^4.3.0",
     "@worldcoin/minikit-js": "^2.0.3",
     "@worldcoin/minikit-react": "^2.0.3",
     "firebase": "^12.11.0",

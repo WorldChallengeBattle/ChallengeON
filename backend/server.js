@@ -7,6 +7,9 @@ const path = require('path');
 const crypto = require('crypto');
 const admin = require('firebase-admin');
 const { matchesCronSecret } = require('./cron-auth');
+const { CHALLENGE_TTL_MS, validateSiweContext, authenticatedRewardRecipient } = require('./wallet-auth-policy');
+const { registerWorldIdRoutes, getWelcomeBinding, identityForClaim } = require('./world-id');
+const { registerWalletProfileRoutes } = require('./wallet-profile');
 
 function loadFirebaseServiceAccount() {
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
@@ -407,6 +410,7 @@ async function migrateLegacyUnonSchema() {
 const client = new ApifyClient({ token: process.env.APIFY_API_TOKEN || 'DUMMY_TOKEN' });
 
 const app = express();
+app.set('trust proxy', process.env.K_SERVICE ? 1 : false);
 const corsOrigins = new Set(String(process.env.CORS_ORIGINS || '')
   .split(',')
   .map((origin) => origin.trim())
@@ -534,7 +538,7 @@ const UNON_EXPLORER_BASE_URL = UNON_NETWORK_CONFIG.explorerBaseUrl;
 const UNON_TRANSFER_LOG_LIMIT = Math.min(parseInt(process.env.UNON_TRANSFER_LOG_LIMIT || process.env.WCT_TRANSFER_LOG_LIMIT || '20', 10) || 20, 200);
 const UNON_RPC_READ_TIMEOUT_MS = Math.min(parseInt(process.env.UNON_RPC_READ_TIMEOUT_MS || process.env.WCT_RPC_READ_TIMEOUT_MS || '6000', 10) || 6000, 30000);
 const UNON_RPC_LOG_TIMEOUT_MS = Math.min(parseInt(process.env.UNON_RPC_LOG_TIMEOUT_MS || process.env.WCT_RPC_LOG_TIMEOUT_MS || '9000', 10) || 9000, 45000);
-const UNON_INDEX_FROM_BLOCK = Math.max(0, parseInt(process.env.UNON_INDEX_FROM_BLOCK || process.env.WCT_INDEX_FROM_BLOCK || process.env.UNON_HOLDER_SCAN_FROM_BLOCK || process.env.WCT_HOLDER_SCAN_FROM_BLOCK || '0', 10) || 0);
+const UNON_INDEX_FROM_BLOCK = UNON_NETWORK_CONFIG.deployment.startBlock || Math.max(0, parseInt(process.env.UNON_INDEX_FROM_BLOCK || process.env.WCT_INDEX_FROM_BLOCK || process.env.UNON_HOLDER_SCAN_FROM_BLOCK || process.env.WCT_HOLDER_SCAN_FROM_BLOCK || '0', 10) || 0);
 const UNON_INDEX_CHUNK_BLOCKS = Math.min(Math.max(parseInt(process.env.UNON_INDEX_CHUNK_BLOCKS || process.env.WCT_INDEX_CHUNK_BLOCKS || process.env.UNON_HOLDER_SCAN_CHUNK_BLOCKS || process.env.WCT_HOLDER_SCAN_CHUNK_BLOCKS || '5000', 10) || 5000, 100), 100000);
 const UNON_INDEX_MAX_CHUNKS_PER_RUN = Math.min(Math.max(parseInt(process.env.UNON_INDEX_MAX_CHUNKS_PER_RUN || process.env.WCT_INDEX_MAX_CHUNKS_PER_RUN || '20', 10) || 20, 1), 500);
 const UNON_INDEX_INTERVAL_MS = Math.min(Math.max(parseInt(process.env.UNON_INDEX_INTERVAL_MS || process.env.WCT_INDEX_INTERVAL_MS || '120000', 10) || 120000, 30000), 3600000);
@@ -551,7 +555,7 @@ const UNON_TOKENOMICS_PLAN = [
   { key: 'team', label: 'Team and core contributors', category: 'Operations', percent: 10, amount: 1000000000 },
   { key: 'marketing', label: 'Growth, partnerships, marketing', category: 'Growth', percent: 7, amount: 700000000 },
   { key: 'liquidity', label: 'Liquidity and exchange support', category: 'Liquidity', percent: 3, amount: 300000000 },
-  { key: 'reserve', label: 'Legacy transition reserve', category: 'Reserve', percent: 5, amount: 500000000 }
+  { key: 'legacy_payout', label: 'Legacy immediate payout (completed)', category: 'Migration', percent: 5, amount: 500000000 }
 ];
 const UNON_TOKENOMICS_PLAN_BY_KEY = new Map(UNON_TOKENOMICS_PLAN.map((row) => [row.key, row]));
 const UNON_CONTRACT_ROLE_NOTES = [
@@ -565,7 +569,7 @@ const UNON_CONTRACT_ROLE_NOTES = [
   { key: 'treasury', label: 'TreasuryVault', role: 'Governance-controlled treasury custody', envKey: 'UNON_TREASURY_ADDRESS' },
   { key: 'vesting', label: 'VestingVault', role: 'Team/core contributor vesting custody', envKey: 'UNON_TEAM_ADDRESS' },
   { key: 'migration', label: 'MigrationManager', role: 'Internal legacy transition reserve custody, hidden from user UI', envKey: 'UNON_RESERVE_ADDRESS' }
-];
+].filter(row => row.key !== 'migration' || !!UNON_NETWORK_CONFIG.contracts.migrationManager);
 function getUnonContractRoleAddress(contractKey, tokenAddress) {
   const contracts = UNON_NETWORK_CONFIG.contracts || {};
   const roleAddressByKey = {
@@ -799,6 +803,7 @@ function getUnonTrackedWallets() {
 
   const seen = new Set();
   return [...base, ...extra].filter((wallet) => {
+    if (wallet.key === 'reserve' && !contracts.migrationManager) return false;
     const addressKey = String(wallet.address || '').toLowerCase();
     if (!addressKey) return true;
     if (seen.has(addressKey)) return false;
@@ -849,7 +854,7 @@ function getLogIndex(log) {
 
 async function ensureUnonIndexerState(client = pool) {
   const tokenAddress = parseOptionalAddress(UNON_TOKEN_ADDRESS);
-  const onboardingAddress = parseOptionalAddress(process.env.UNON_ONBOARDING_MANAGER_ADDRESS || process.env.WCT_ONBOARDING_MANAGER_ADDRESS || DEFAULT_ONBOARDING_MANAGER_ADDRESS);
+  const onboardingAddress = parseOptionalAddress(UNON_NETWORK_CONFIG.contracts.onboardingManager);
   const key = getUnonIndexerKey();
   const initialLastSyncedBlock = UNON_INDEX_FROM_BLOCK - 1;
 
@@ -923,7 +928,7 @@ async function getUnonIndexStatus({ refreshLatest = false } = {}) {
     key: state.key,
     configured: !!parseOptionalAddress(UNON_TOKEN_ADDRESS),
     tokenAddress: parseOptionalAddress(UNON_TOKEN_ADDRESS),
-    onboardingManagerAddress: parseOptionalAddress(process.env.UNON_ONBOARDING_MANAGER_ADDRESS || process.env.WCT_ONBOARDING_MANAGER_ADDRESS || DEFAULT_ONBOARDING_MANAGER_ADDRESS),
+    onboardingManagerAddress: parseOptionalAddress(UNON_NETWORK_CONFIG.contracts.onboardingManager),
     fromBlock,
     lastSyncedBlock: syncedThrough,
     latestBlock,
@@ -1117,7 +1122,7 @@ async function resetUnonIndexForActiveToken() {
     `, [
       key,
       normalizedTokenAddress,
-      parseOptionalAddress(process.env.UNON_ONBOARDING_MANAGER_ADDRESS || process.env.WCT_ONBOARDING_MANAGER_ADDRESS || DEFAULT_ONBOARDING_MANAGER_ADDRESS),
+      parseOptionalAddress(UNON_NETWORK_CONFIG.contracts.onboardingManager),
       UNON_INDEX_FROM_BLOCK,
       UNON_INDEX_FROM_BLOCK - 1
     ]);
@@ -1137,7 +1142,7 @@ async function runUnonIndexSync(options = {}) {
     return { success: false, error: 'UNON_TOKEN_ADDRESS is not a valid contract address' };
   }
 
-  const onboardingAddress = parseOptionalAddress(process.env.UNON_ONBOARDING_MANAGER_ADDRESS || process.env.WCT_ONBOARDING_MANAGER_ADDRESS || DEFAULT_ONBOARDING_MANAGER_ADDRESS);
+  const onboardingAddress = parseOptionalAddress(UNON_NETWORK_CONFIG.contracts.onboardingManager);
   if (options.reset === true) {
     await resetUnonIndexForActiveToken();
   }
@@ -1372,6 +1377,8 @@ function mapChallengeRow(row) {
     userVideoCount: parseInt(row.user_video_count) || 0,
     externalVideoCount: parseInt(row.external_video_count) || 0,
     platforms: Array.isArray(row.platforms) ? row.platforms.filter(Boolean) : [],
+    thumbnailUrl: row.thumbnail_url || null,
+    latestVideoAt: row.latest_video_at || null,
     likes: parseInt(row.likes) || 0,
     dislikes: parseInt(row.dislikes) || 0,
     createdByUid: row.created_by_uid || null,
@@ -1484,20 +1491,37 @@ if (onboardingWallet) {
   console.error('[ONBOARDING] ONBOARDING_VERIFIER_PRIVATE_KEY is not configured. UNON onboarding claims are disabled until the authorized signer key is set.');
 }
 
-// SIWE & World ID: Phase 1 - Get Nonce
-app.get('/api/auth/nonce', (req, res) => {
+const loginChallengeRequests = new Map();
+
+// Wallet login challenges are short-lived and consumed once across server instances.
+app.get('/api/auth/nonce', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const nonce = generateNonce();
-  res.json({ success: true, nonce });
+  const origin = req.get('origin');
+  if (!origin || !corsOrigins.has(origin)) return res.status(403).json({ error: 'Login origin is not configured.' });
+  const now = Date.now();
+  for (const [key, value] of loginChallengeRequests) if (value.resetAt <= now) loginChallengeRequests.delete(key);
+  const key = req.ip;
+  const rate = loginChallengeRequests.get(key) || { count: 0, resetAt: now + 60000 };
+  // Per-instance abuse guard; the shared Firestore transaction provides replay protection.
+  if (rate.count >= 10 || loginChallengeRequests.size >= 1000) return res.status(429).json({ error: 'Too many wallet login attempts. Try again later.' });
+  rate.count++;
+  loginChallengeRequests.set(key, rate);
+  try {
+    const challenge = { nonce, origin, domain: new URL(origin).host, createdAt: Date.now(), expiresAt: Date.now() + CHALLENGE_TTL_MS };
+    await admin.firestore().collection('_walletAuthChallenges').doc(nonce).create({ ...challenge, deleteAfter: new Date(challenge.expiresAt) });
+    res.json({ success: true, nonce });
+  } catch {
+    res.status(503).json({ error: 'Wallet login is temporarily unavailable.' });
+  }
 });
 
-// SIWE & World ID: Phase 2 - Verify Signature & Swap for Firebase Custom Token
+// Verify wallet ownership; this does not establish a World ID human proof.
 app.post('/api/auth/complete-siwe', async (req, res) => {
   const { payload, nonce } = req.body;
   
   // MiniKit v2 wraps auth data inside the 'data' property
   const authData = payload?.data;
-  console.log("[AUTH] SIWE Verification Request:", JSON.stringify(authData, null, 2));
 
   if (!authData || !authData.message || !authData.signature) {
     return res.status(400).json({ error: 'Missing SIWE data, message, or signature' });
@@ -1506,6 +1530,10 @@ app.post('/api/auth/complete-siwe', async (req, res) => {
   try {
     const messageStr = typeof authData.message === 'string' ? authData.message.trim() : JSON.stringify(authData.message);
     const siweMessage = new SiweMessage(messageStr);
+    if (!/^[a-zA-Z0-9]{8,128}$/.test(String(nonce || ''))) throw new Error('Invalid nonce');
+    const challengeRef = admin.firestore().collection('_walletAuthChallenges').doc(nonce);
+    const challenge = (await challengeRef.get()).data();
+    validateSiweContext(siweMessage, challenge);
     
     // Verify using World Chain Provider to support Smart Contract Wallets (ERC-1271)
     const result = await siweMessage.verify({
@@ -1518,9 +1546,13 @@ app.post('/api/auth/complete-siwe', async (req, res) => {
       throw new Error(result.error?.type || "SIWE Verification failed.");
     }
     
-    // Address is the unique human identifier in WorldID ecosystem
-    // Ensure case-insensitive comparison or just use the one from verified result
-    const address = (result.data.address || authData.address).toLowerCase();
+    const address = result.data.address.toLowerCase();
+    if (authData.address && authData.address.toLowerCase() !== address) throw new Error('Wallet address mismatch');
+    await admin.firestore().runTransaction(async transaction => {
+      const fresh = (await transaction.get(challengeRef)).data();
+      validateSiweContext(siweMessage, fresh);
+      transaction.delete(challengeRef);
+    });
 
     await pool.query(`
       INSERT INTO users (id, email, google_id, creator_handle, wallet_address)
@@ -1537,21 +1569,33 @@ app.post('/api/auth/complete-siwe', async (req, res) => {
 
     // Generate a secure Firebase Custom Token using address as the UID
     const customToken = await admin.auth().createCustomToken(address, {
-        is_world_id: true
+        wallet_verified: true,
+        wallet_address: address,
+        wallet_auth_version: 2
     });
 
-    console.log(`[AUTH] SIWE Authenticated (World ID): ${address}`);
+    console.log(`[AUTH] Wallet authenticated: ${address}`);
     res.json({ success: true, customToken, address });
 
   } catch (error) {
-    console.error("[!] SIWE Auth Error:", error);
-    res.status(500).json({ error: error.message });
+    console.error('[AUTH] Wallet login failed:', error.message);
+    res.status(401).json({ error: 'Wallet authentication failed. Request a new login challenge.' });
   }
 });
 
 // UNON Onboarding: Generate Signature for Claim Contract
-app.post('/api/auth/onboarding-signature', async (req, res) => {
-  const { address } = req.body;
+registerWorldIdRoutes(app, pool, requireAuthenticatedUser);
+registerWalletProfileRoutes(app, admin, provider, UNON_NETWORK_CONFIG.contracts.onboardingManager, requireAuthenticatedUser, pool);
+
+app.post('/api/auth/onboarding-signature', requireAuthenticatedUser, async (req, res) => {
+  let address;
+  let binding;
+  try {
+    binding = await getWelcomeBinding(pool, String(req.authUser.wallet_address || ''));
+    address = authenticatedRewardRecipient({ ...req.authUser, world_id_verified: Boolean(binding) }, req.body.address, process.env.ONBOARDING_REWARDS_ENABLED === 'true');
+  } catch (error) {
+    return res.status(403).json({ error: 'Welcome rewards require a recent wallet login, human verification and an enabled reward policy' });
+  }
   
   if (!address) {
     return res.status(400).json({ error: 'Missing address' });
@@ -1564,14 +1608,28 @@ app.post('/api/auth/onboarding-signature', async (req, res) => {
   }
 
   try {
-    // Generate deterministic identityNullifier from the user's address
-    const identityNullifier = ethers.keccak256(ethers.toUtf8Bytes(address.toLowerCase()));
+    const identityNullifier = identityForClaim(binding.nullifier);
     
     // Match solidity: keccak256(abi.encodePacked(block.chainid, address(this), identityNullifier, recipient))
     const chainId = WORLD_CHAIN_CHAIN_ID;
-    const contractAddress = parseOptionalAddress(process.env.UNON_ONBOARDING_MANAGER_ADDRESS || process.env.WCT_ONBOARDING_MANAGER_ADDRESS || DEFAULT_ONBOARDING_MANAGER_ADDRESS);
+    const contractAddress = parseOptionalAddress(UNON_NETWORK_CONFIG.contracts.onboardingManager);
     if (!contractAddress) {
       return res.status(503).json({ error: 'UNON onboarding manager is not configured for the selected network.' });
+    }
+
+    const onboardingContract = new ethers.Contract(contractAddress, [
+      'function claimedIdentityNullifiers(bytes32) view returns (bool)',
+      'function verifierSigner() view returns (address)'
+    ], provider);
+    const oldWalletIdentity = ethers.keccak256(ethers.toUtf8Bytes(address.toLowerCase()));
+    const [claimed, restored, verifier] = await Promise.all([
+      onboardingContract.claimedIdentityNullifiers(identityNullifier),
+      onboardingContract.claimedIdentityNullifiers(oldWalletIdentity),
+      onboardingContract.verifierSigner()
+    ]);
+    if (claimed || restored) return res.status(409).json({ error: 'This wallet or identity has already claimed its welcome reward' });
+    if (verifier.toLowerCase() !== onboardingWallet.address.toLowerCase()) {
+      return res.status(503).json({ error: 'Welcome reward signer is not configured for the current contract' });
     }
 
     const messageHash = ethers.solidityPackedKeccak256(
@@ -2256,6 +2314,11 @@ app.get('/api/challenges', async (req, res) => {
         COUNT(v.id) FILTER (WHERE v.author_uid IS NOT NULL OR v.author_wallet_address IS NOT NULL OR v.author_world_username IS NOT NULL) as user_video_count,
         COUNT(v.id) FILTER (WHERE v.author_uid IS NULL AND v.author_wallet_address IS NULL AND v.author_world_username IS NULL) as external_video_count,
         ARRAY_REMOVE(ARRAY_AGG(DISTINCT v.platform), NULL) as platforms,
+        (ARRAY_AGG(NULLIF(v.thumbnail_url, '') ORDER BY v.view_count DESC NULLS LAST)
+          FILTER (WHERE NULLIF(v.thumbnail_url, '') IS NOT NULL AND CASE WHEN COALESCE(c.challenge_mode, CASE WHEN c.challenge_type = 'prize' THEN 'battle' ELSE 'trend' END) = 'trend'
+            THEN v.author_uid IS NULL AND v.author_wallet_address IS NULL AND v.author_world_username IS NULL
+            ELSE v.author_uid IS NOT NULL OR v.author_wallet_address IS NOT NULL OR v.author_world_username IS NOT NULL END))[1] as thumbnail_url,
+        MAX(v.updated_at) as latest_video_at,
         u.wallet_address as creator_wallet_address
       FROM ${TABLE_CHALLENGES} c
       LEFT JOIN ${TABLE_VIDEOS} v ON c.id = v.challenge_id AND COALESCE(v.is_hidden, false) = false
@@ -2294,6 +2357,11 @@ app.get('/api/on-sections', async (req, res) => {
           COUNT(v.id) FILTER (WHERE v.author_uid IS NOT NULL OR v.author_wallet_address IS NOT NULL OR v.author_world_username IS NOT NULL) as user_video_count,
           COUNT(v.id) FILTER (WHERE v.author_uid IS NULL AND v.author_wallet_address IS NULL AND v.author_world_username IS NULL) as external_video_count,
           ARRAY_REMOVE(ARRAY_AGG(DISTINCT v.platform), NULL) as platforms,
+          (ARRAY_AGG(NULLIF(v.thumbnail_url, '') ORDER BY v.view_count DESC NULLS LAST)
+            FILTER (WHERE NULLIF(v.thumbnail_url, '') IS NOT NULL AND CASE WHEN COALESCE(c.challenge_mode, CASE WHEN c.challenge_type = 'prize' THEN 'battle' ELSE 'trend' END) = 'trend'
+              THEN v.author_uid IS NULL AND v.author_wallet_address IS NULL AND v.author_world_username IS NULL
+              ELSE v.author_uid IS NOT NULL OR v.author_wallet_address IS NOT NULL OR v.author_world_username IS NOT NULL END))[1] as thumbnail_url,
+          MAX(v.updated_at) as latest_video_at,
           u.wallet_address as creator_wallet_address
         FROM ${TABLE_CHALLENGES} c
         LEFT JOIN ${TABLE_VIDEOS} v ON c.id = v.challenge_id AND COALESCE(v.is_hidden, false) = false
@@ -3119,8 +3187,8 @@ app.post('/api/videos/upload', upload.single('video'), async (req, res) => {
   }
 });
 
-// API: Delete broken/unplayable video
-app.delete('/api/videos/:id', async (req, res) => {
+// Playback failures are session-local; only administrators can delete stored videos.
+app.delete('/api/videos/:id', requireAuthenticatedUser, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(`DELETE FROM ${TABLE_VIDEOS} WHERE id = $1 RETURNING *`, [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Video not found' });
@@ -4847,7 +4915,7 @@ async function buildUnonAdminReport(options = {}) {
       }
     },
     config: {
-      tokenConfigured: !!(process.env.UNON_TOKEN_ADDRESS || process.env.WCT_TOKEN_ADDRESS),
+      tokenConfigured: !!UNON_NETWORK_CONFIG.contracts.unonToken,
       trackedWalletsConfigured: validWallets.length,
       indexFromBlock: UNON_INDEX_FROM_BLOCK,
       indexChunkBlocks: UNON_INDEX_CHUNK_BLOCKS,

@@ -8,7 +8,7 @@ export default defineConfig({
     allowedHosts: ['representative-efficient-glasgow-legends.trycloudflare.com'],
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: process.env.DEV_API_TARGET || 'http://localhost:8080',
         changeOrigin: true,
         secure: false,
       }

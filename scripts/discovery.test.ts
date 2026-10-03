@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { discoverChallenges } from '../src/services/challengeDiscovery.ts';
+import { getVideoSourceId } from '../src/services/videoSource.ts';
+
+const topic = (id: string, extra = {}) => ({ id, title: 'Dance challenge', hashtags: '#dance #UNON', region: 'Global 🌍', viralScore: 1, participants: 0, bgGradient: '', challengeMode: 'trend' as const, externalVideoCount: 2, platforms: ['youtube'], ...extra });
+const data = [topic('global'), topic('korea', { region: 'Korea 🇰🇷', viralScore: 5, platforms: ['tiktok'], latestVideoAt: '2026-09-30' }), topic('empty', { externalVideoCount: 0 }), topic('battle', { challengeMode: 'battle', userVideoCount: 1 }), topic('now', { challengeMode: 'now', userVideoCount: 1 }), topic('user-trend', { userVideoCount: 1 })];
+const defaults = { mode: 'trend' as const, region: 'Global 🌐', query: '', platform: 'all', sort: 'popular' as const, savedOnly: false, savedIds: [] as string[] };
+const ids = (options = {}) => discoverChallenges(data, { ...defaults, ...options }).map(c => c.id);
+assert.deepEqual(ids(), ['korea', 'global', 'user-trend']);
+assert.deepEqual(ids({ region: 'USA 🇺🇸' }), ['global', 'user-trend']);
+assert.deepEqual(ids({ region: 'Korea' }), ['korea', 'global', 'user-trend']);
+assert.deepEqual(ids({ platform: 'tiktok' }), ['korea']);
+assert.deepEqual(ids({ query: 'DANCE #unon' }), ['korea', 'global', 'user-trend']);
+assert.deepEqual(ids({ query: 'no-match' }), []);
+assert.deepEqual(ids({ savedOnly: true, savedIds: ['global'] }), ['global']);
+assert.deepEqual(ids({ savedOnly: true }), []);
+assert.deepEqual(ids({ mode: 'battle' }), ['battle', 'now', 'user-trend']);
+assert.deepEqual(ids({ mode: 'now' }), ['now']);
+assert.equal(ids({ sort: 'recent' })[0], 'korea');
+assert.equal(data[0].id, 'global');
+const fresh = [topic('attempt', { eventConfig: { lastTrendSyncAt: '2030-01-01' } }), topic('video', { latestVideoAt: '2026-09-30' })];
+assert.equal(discoverChallenges(fresh, { ...defaults, sort: 'recent' })[0].id, 'video');
+console.log('Discovery checks passed (search, region, platform, saved, modes, ordering).');
+assert.equal(getVideoSourceId({id:'youtube_aB_cD-12345',platform:'youtube'}), 'aB_cD-12345');
+assert.equal(getVideoSourceId({id:'instagram_C25TX_asJbr',platform:'instagram'}), 'C25TX_asJbr');
+assert.equal(getVideoSourceId({id:'legacy',platform:'youtube',videoUrl:'https://youtu.be/aB_cD-12345?t=10'}), 'aB_cD-12345');
+assert.equal(getVideoSourceId({id:'tiktok_7604350952329547028',platform:'tiktok'}), '7604350952329547028');
+console.log('Video source ID checks passed (including embedded underscores).');
