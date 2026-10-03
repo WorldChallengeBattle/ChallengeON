@@ -19,9 +19,12 @@ export function WorldIdWelcomeVerification({ request, user, onClose, onVerified,
 }) {
   const backendVerified = useRef(false);
   const backendError = useRef<string | null>(null);
+  const errorReported = useRef(false);
   return <IDKitRequestWidget
     open
-    onOpenChange={(open) => { if (!open) onClose(); }}
+    onOpenChange={(open) => {
+      if (!open && !backendVerified.current && !errorReported.current) onClose();
+    }}
     app_id={request.app_id}
     action={request.action}
     rp_context={request.rp_context}
@@ -45,8 +48,13 @@ export function WorldIdWelcomeVerification({ request, user, onClose, onVerified,
       }
     }}
     onSuccess={onVerified}
-    onError={() => {
-      if (!backendVerified.current) onError(backendError.current || 'Human verification was not completed. Please try again.');
+    onError={(code) => {
+      if (backendVerified.current) return;
+      errorReported.current = true;
+      const safeCode = typeof code === 'string' && /^[a-z0-9_]{1,64}$/.test(code) ? code : null;
+      onError(backendError.current || (safeCode
+        ? `World ID verification failed (${safeCode}). Please retry.`
+        : 'Human verification was not completed. Please try again.'));
     }}
   />;
 }

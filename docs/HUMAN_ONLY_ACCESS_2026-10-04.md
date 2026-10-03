@@ -72,3 +72,28 @@
   proof cancellation and authenticated feed/actions before claiming E2E success.
 
 Reference: https://docs.world.org/world-id/idkit/mini-apps
+
+## Native Login Failure Follow-up
+
+- User supplied local `screenshot/1.jpg`, `2.jpg`, `3.jpg`: locked app entry,
+  native World ID approval sheet, then a native error screen. The third image
+  does not show an error code. Do not infer a specific credential/signature
+  failure from a generic orange error screen.
+- Read-only Cloud Run request-log inspection at 02:24 Asia/Seoul: wallet SIWE
+  completion returned 200; subsequent profile and RP requests returned 200.
+  No `/api/auth/world-id/verify` call was observed in this attempt window. This
+  places the observed failure before backend proof verification, not at DB
+  uniqueness or protected app API access. One earlier profile request returned
+  403 before the later successful profile requests.
+- IDKit native flow exposes an error code callback, but our wrapper discarded
+  it. Its automatic close callback could then overwrite the error with the
+  generic cancellation message shown in screenshot 1.
+- Local fix preserves sanitized SDK error codes and skips generic close
+  handling after reported error or successful backend verification. No raw
+  native debug report, identity, proof or private key is displayed/logged.
+- Callback/entry regressions and frontend build pass. User approved frontend-only
+  Git/Vercel publication on 2026-10-04. Commit only the component, its tests and
+  this record; exclude user screenshots. Verify Vercel Ready and public asset
+  delivery after push before reporting this diagnostic fix as live. No policy
+  downgrade, RP change, reward activation or backend deployment performed.
+- The exact native failure remains unresolved until its error code is visible.

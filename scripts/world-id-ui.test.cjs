@@ -19,11 +19,12 @@ function widget(fetch) {
   } });
   const errors = [];
   let successes = 0;
+  let closes = 0;
   const props = exports.WorldIdWelcomeVerification({
     request: { signal: 'fixture', rp_context: {} }, user: { getIdToken: async () => 'fixture' },
-    onClose: () => {}, onVerified: () => { successes++; }, onError: error => errors.push(error)
+    onClose: () => { closes++; }, onVerified: () => { successes++; }, onError: error => errors.push(error)
   });
-  return { props, errors, successes: () => successes };
+  return { props, errors, successes: () => successes, closes: () => closes };
 }
 async function main() {
   const success = widget(async () => ({ ok: true, json: async () => ({ success: true }) }));
@@ -32,11 +33,26 @@ async function main() {
   success.props.onError();
   assert.equal(success.successes(), 1);
   assert.deepEqual(success.errors, []);
+  success.props.onOpenChange(false);
+  assert.equal(success.closes(), 0);
   const rejected = widget(async () => ({ ok: false, json: async () => ({ error: 'Human verification failed; request a new proof' }) }));
   await assert.rejects(rejected.props.handleVerify({}));
   rejected.props.onError();
   assert.deepEqual(rejected.errors, ['Human verification failed; request a new proof']);
   assert.equal(rejected.successes(), 0);
+  rejected.props.onOpenChange(false);
+  assert.equal(rejected.closes(), 0);
+  const native = widget(async () => { throw new Error('Backend must not be called'); });
+  native.props.onError('invalid_rp_signature');
+  native.props.onOpenChange(false);
+  assert.deepEqual(native.errors, ['World ID verification failed (invalid_rp_signature). Please retry.']);
+  assert.equal(native.closes(), 0);
+  const cancelled = widget(async () => ({}));
+  cancelled.props.onOpenChange(false);
+  assert.equal(cancelled.closes(), 1);
+  const invalidCode = widget(async () => ({}));
+  invalidCode.props.onError('untrusted\nprivate debug data');
+  assert.deepEqual(invalidCode.errors, ['Human verification was not completed. Please try again.']);
   const transport = widget(async () => { throw new Error('Network unavailable'); });
   transport.props.onError();
   assert.deepEqual(transport.errors, ['Human verification was not completed. Please try again.']);
