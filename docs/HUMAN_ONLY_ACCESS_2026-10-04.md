@@ -97,3 +97,34 @@ Reference: https://docs.world.org/world-id/idkit/mini-apps
   delivery after push before reporting this diagnostic fix as live. No policy
   downgrade, RP change, reward activation or backend deployment performed.
 - The exact native failure remains unresolved until its error code is visible.
+
+## Nullifier Replay Diagnosis
+
+- The user subsequently reported `nullifier_replayed`. The installed IDKit
+  SDK exposes this native error and maps it to its already-verified state.
+- Read-only production database audit: 15 issued requests, 0 consumed requests,
+  0 persisted human bindings. Recent Cloud Run logs show successful request
+  issuance but no proof-verification request for the reported native failures.
+  Do not treat the native error as evidence of a verified backend identity.
+- Read-only Portal MCP inspection confirms the registered production RP and
+  the sole configured action `challengeon-welcome-reward`. No configuration,
+  signing key or production record was changed during this investigation.
+- World ID v4 specifies one-time issuance for uniqueness nullifiers and session
+  proofs for repeated authentication. Source:
+  https://github.com/worldcoin/world-id-protocol/blob/main/docs/world-id-4-specs/README.md
+- Likely sequence: a prior attempt issued the welcome-action proof but failed
+  before our binding was persisted. The current error establishes rejection
+  of reuse; the exact earlier issuance event is not proven by Portal history.
+- Local error copy no longer recommends retrying this consumed action. This
+  is diagnostic UX only, not a working sign-in recovery or production release.
+- Recovery design: separate login Proof of Human from one-time welcome reward
+  uniqueness. Evaluate native v4 session creation/proving and the production
+  verifier's session contract before implementation. Persist only backend-
+  verified, nonce- and wallet-bound login evidence. Preserve independent reward
+  eligibility, one-time payout controls and disabled rewards throughout.
+- Do not accept `nullifier_replayed` as a proof, manually mark a wallet human,
+  randomize reward actions, clear uniqueness records, or downgrade credentials.
+  Changing action scope can reset uniqueness and must not reset reward rights.
+- New Portal/production configuration, database migrations, Git publication
+  and deployment require fresh user approval. Native returning-session E2E
+  remains a release requirement, not a verified result of this investigation.

@@ -4,7 +4,7 @@ import { MiniKit } from '@worldcoin/minikit-js';
 import { RefreshCw, Shield } from 'lucide-react';
 import { auth } from '../firebase';
 import { apiUrl } from '../config/api';
-import { WorldIdWelcomeVerification, type WelcomeProofRequest } from '../components/WorldIdWelcomeVerification';
+import { WorldIdSessionVerification, type HumanSessionRequest } from '../components/WorldIdSessionVerification';
 import brandIcon from '../assets/brand/ChallengeOnICO.png';
 
 interface UserData {
@@ -35,7 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [accessGranted, setAccessGranted] = useState(false);
   const [error, setError] = useState('');
-  const [proofRequest, setProofRequest] = useState<WelcomeProofRequest | null>(null);
+  const [proofRequest, setProofRequest] = useState<HumanSessionRequest | null>(null);
   const hasAttemptedAutoLoginRef = useRef(false);
   const isAuthenticatingRef = useRef(false);
   const generation = useRef(0);
@@ -89,7 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (run !== generation.current) return;
       await syncUserData(user);
       if (run !== generation.current) return;
-      const response = await fetch(apiUrl('/api/auth/world-id/request'), { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const response = await fetch(apiUrl('/api/auth/world-id/session/request'), { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       const data = await response.json();
       if (run !== generation.current) return;
       if (!response.ok) throw new Error(data.error || 'Human verification is unavailable');
@@ -176,7 +176,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         </button>}
       </main>
     )}
-    {proofRequest && currentUser && proofRequest.signal === currentUser.uid.toLowerCase() && <WorldIdWelcomeVerification
+    {proofRequest && currentUser && proofRequest.signal === currentUser.uid.toLowerCase() && <WorldIdSessionVerification
       key={proofRequest.rp_context.nonce} request={proofRequest} user={currentUser}
       onVerified={() => { void finishProof(); }}
       onClose={() => {

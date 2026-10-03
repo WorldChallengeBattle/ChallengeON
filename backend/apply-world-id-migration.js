@@ -21,18 +21,22 @@ async function main() {
     ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false }, connectionTimeoutMillis: 15000 } : {
     host, user, password: process.env.PGPASSWORD, database: process.env.PGDATABASE, port: process.env.PGPORT || 5432,
     ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000 });
+  const sessions = process.argv.includes('--sessions');
+  const tableNames = sessions ? ['world_id_login_requests', 'world_id_login_sessions', 'world_id_login_proofs']
+    : ['world_id_requests', 'world_id_welcome_bindings'];
   try {
     await client.connect();
     const before = (await client.query(`SELECT relname, relrowsecurity FROM pg_class
-      WHERE oid IN (to_regclass('public.world_id_requests'), to_regclass('public.world_id_welcome_bindings'))`)).rows;
+      WHERE relnamespace = 'public'::regnamespace AND relname = ANY($1::text[])`, [tableNames])).rows;
     if (process.argv.includes('--apply')) {
       if (before.length) throw new Error('Target tables already exist; inspect instead of applying again');
-      await client.query(fs.readFileSync(path.join(__dirname, 'migrations/20261003_world_id.sql'), 'utf8'));
+      await client.query(fs.readFileSync(path.join(__dirname, sessions
+        ? 'migrations/20261004_world_id_sessions.sql' : 'migrations/20261003_world_id.sql'), 'utf8'));
     }
     const tables = (await client.query(`SELECT relname, relrowsecurity FROM pg_class
-      WHERE oid IN (to_regclass('public.world_id_requests'), to_regclass('public.world_id_welcome_bindings'))`)).rows;
+      WHERE relnamespace = 'public'::regnamespace AND relname = ANY($1::text[])`, [tableNames])).rows;
     const constraints = (await client.query(`SELECT conname, contype FROM pg_constraint WHERE conrelid IN
-      (to_regclass('public.world_id_requests'), to_regclass('public.world_id_welcome_bindings'))`)).rows;
+      (SELECT oid FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname = ANY($1::text[]))`, [tableNames])).rows;
     console.log(JSON.stringify({ targetProject: PROJECT, applied: process.argv.includes('--apply'), before, tables, constraints }));
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});

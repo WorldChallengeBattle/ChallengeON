@@ -6,15 +6,17 @@ async function main() {
   const wallet = '0x' + '12'.repeat(20);
   let binding = false;
   let unavailable = false;
-  const pool = { query: async () => {
+  const pool = { query: async (sql, args) => {
     if (unavailable) throw new Error('DB unavailable');
-    return { rows: binding ? [{ nullifier: '10' }] : [] };
+    assert.match(sql, /world_id_login_sessions/);
+    assert.equal(args[2], 100);
+    return { rows: binding ? [{ session_id: 'fixture' }] : [] };
   } };
   const app = express();
   const authenticate = (req, res, next) => {
     if (!req.headers.authorization) return res.status(401).end();
     req.authUser = { uid: wallet, wallet_address: wallet, wallet_verified: true, wallet_auth_version: 2,
-      world_id_verified: true };
+      world_id_verified: true, auth_time: 100 };
     if (req.headers.authorization === 'Bearer mismatched') req.authUser.uid = '0x' + '34'.repeat(20);
     next();
   };
@@ -29,6 +31,8 @@ async function main() {
   try {
     assert.equal((await request('/api/auth/nonce')).status, 200);
     assert.equal((await request('/api/auth/world-id/request', 'POST')).status, 200);
+    assert.equal((await request('/api/auth/world-id/session/request', 'POST')).status, 200);
+    assert.equal((await request('/api/auth/world-id/session/verify', 'POST')).status, 200);
     assert.equal((await request('/api/chain-config')).status, 200);
     for (const [path, method] of [['/api/challenges', 'GET'], ['/api/videos/upload', 'POST'], ['/api/admin/me', 'GET'],
       ['/api/challenges/x/vote', 'POST'], ['/api/auth/onboarding-signature', 'POST'], ['/api/auth/profile/extra', 'GET']]) {

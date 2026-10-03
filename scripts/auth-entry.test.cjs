@@ -33,7 +33,7 @@ function fixture({ stored = false, requestVerified = stored, installed = true, m
     if (name === 'lucide-react') return { RefreshCw: 'retry-icon', Shield: 'shield' };
     if (name === '../firebase') return { auth };
     if (name === '../config/api') return { apiUrl: path => path };
-    if (name.includes('WorldIdWelcomeVerification')) return { WorldIdWelcomeVerification: 'proof-widget' };
+    if (name.includes('WorldIdSessionVerification')) return { WorldIdSessionVerification: 'proof-widget' };
     if (name.includes('.png')) return 'brand.png';
     throw new Error(name);
   }, fetch: async path => {
@@ -53,7 +53,8 @@ async function main() {
   const first = fixture(); first.start(); await settle();
   assert.notEqual(view(first)[0], 'protected-app');
   assert.equal(view(first)[1].type, 'proof-widget');
-  assert(first.calls.includes('/api/auth/world-id/request'));
+  assert(first.calls.includes('/api/auth/world-id/session/request'));
+  assert(!first.calls.includes('/api/auth/world-id/request'));
   first.verified(); view(first)[1].props.onVerified(); await settle();
   assert.equal(view(first)[0], 'protected-app');
   first.switchWallet(); await settle(); assert.notEqual(view(first)[0], 'protected-app');

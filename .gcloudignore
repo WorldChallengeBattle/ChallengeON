@@ -8,6 +8,7 @@ public/
 docs/
 scripts/
 tmp/
+screenshot/
 backend/uploads/
 backend/*firebase-adminsdk*.json
 backend/*.log
