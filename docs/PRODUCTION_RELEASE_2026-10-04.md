@@ -34,8 +34,9 @@ transactions and World Portal contract allowlist changes are excluded.
   480 and the replacement UNON token and managers; onboarding and migration
   are false. Both configured frontend origins passed preflight.
 - Unauthenticated `/api/auth/world-id/request` returned 401.
-- Production read API returned 77 challenges in the release checks; older
-  documents' 72-item snapshots describe earlier checks, not current counts.
+- Production read API returned 77 challenges. The deployed Trend ON screen
+  displayed 72 after mode/video filters; total rows and visible trends are
+  different counts, not evidence of missing migration records.
 - Local frontend build and backend authentication tests passed. Discovery and
   playback safety checks are rerun before publication. IDKit WASM is emitted.
 - Profile has separate World ID verification so actual-account proof can be
@@ -47,8 +48,6 @@ transactions and World Portal contract allowlist changes are excluded.
 
 ## Remaining Gates
 
-- Git push triggers the Vercel production build from `main`; verify Ready and
-  the published commit before reporting frontend deployment as complete.
 - A real user must reopen World App, sign in and use Profile > Verify World ID.
   Native transport, real Proof of Human and authenticated profile writes have
   not been established by mock tests or desktop inspection.
@@ -61,6 +60,27 @@ transactions and World Portal contract allowlist changes are excluded.
   remain. Bundle size warning remains.
 - Bounded expired-request cleanup and Firestore nonce TTL are not configured;
   server-side request expiration does not depend on those cleanup jobs.
+
+## Frontend Publication Evidence
+
+- Pushed implementation commit
+  `19979ca15944d14ee662c7391d7b4e1ab38d01e4` to
+  `WorldChallengeBattle/ChallengeON`, branch `main`.
+- Vercel production deployment `dpl_uKdgveefWJkoQ1uRk5XTQADt2oQm` reported
+  Ready and Current for that exact commit, with a 20-second build.
+- Both production aliases returned HTTP 200 and
+  `/assets/index-C2dcalBs.js`, containing the new token address, World ID request
+  route and separate Verify World ID control.
+- `/assets/idkit_wasm_bg-DS6XY7na.wasm` returned 200 with 895,864 bytes on both
+  aliases. This checks asset delivery, not real proof verification.
+- Actual desktop browser inspection confirmed Trend ON, search/filter controls,
+  external video rendering and the unauthenticated profile. Desktop cannot
+  establish the native World App authentication flow.
+- Authentication, discovery and playback safety tests passed again immediately
+  before publication. Staged 40-file secret scan found zero inspected secret
+  matches. Git push succeeded, with a clean worktree afterward.
+- A subsequent documentation-only commit records this evidence; its automatic
+  Vercel build must also be checked without mistaking it for a new API image.
 
 ## Rollback
 
