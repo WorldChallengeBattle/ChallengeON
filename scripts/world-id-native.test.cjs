@@ -1,17 +1,11 @@
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 
 async function main() {
   const previousFetch = global.fetch;
   const previousWindow = global.window;
   const listeners = new Map();
   let envelope;
-  global.fetch = async url => {
-    assert.ok(String(url).endsWith('idkit_wasm_bg.wasm'), 'No network calls allowed');
-    return new Response(fs.readFileSync('node_modules/@worldcoin/idkit-core/dist/idkit_wasm_bg.wasm'), {
-      headers: { 'Content-Type': 'application/wasm' }
-    });
-  };
+  global.fetch = async () => { throw new Error('No network calls allowed'); };
   global.window = {
     WorldApp: { supported_commands: [{ name: 'verify', supported_versions: [2] }] },
     addEventListener: (name, callback) => listeners.set(name, callback),
@@ -40,10 +34,13 @@ async function main() {
     const proof = envelope.payload.proof_request;
     assert.equal(proof.proof_type, 'session');
     assert.equal(proof.session_id, 'create');
+    assert.equal(proof.action, null);
     assert.equal(proof.rp_id, config.rp_context.rp_id);
     assert.equal(proof.proof_requests.length, 1);
     assert.equal(proof.proof_requests[0].identifier, 'proof_of_human');
     assert.equal(proof.proof_requests[0].issuer_schema_id, 1);
+    assert.equal(proof.proof_requests[0].genesis_issued_at_min, null);
+    assert.equal(proof.proof_requests[0].expires_at_min, null);
     listeners.get('message')({ data: { type: 'miniapp-verify-action',
       payload: { status: 'error', error_code: 'malformed_request' } } });
     const result = await request.pollUntilCompletion({ timeout: 1000 });
@@ -61,7 +58,7 @@ async function main() {
     assert.equal(listeners.size, 0);
     global.window.WorldApp.supported_commands[0].supported_versions = [1];
     await assert.rejects(IDKit.createSession(config).constraints(constraint), /verify v2 is not supported/);
-    console.log('Real SDK/WASM Android serialization and mocked native rejection passed; not a phone E2E test.');
+    console.log('Real portable SDK Android serialization and mocked native rejection passed; not a phone E2E test.');
   } finally {
     request?.cancel();
     global.fetch = previousFetch;
