@@ -41,8 +41,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const generation = useRef(0);
   const proofAccepted = useRef(false);
 
-  const syncUserData = useCallback(async (user: User) => {
-    const response = await fetch(apiUrl('/api/auth/profile'), { headers: { Authorization: `Bearer ${await user.getIdToken()}` } });
+  const syncUserData = useCallback(async (user: User, token?: string) => {
+    const response = await fetch(apiUrl('/api/auth/profile'), { headers: { Authorization: `Bearer ${token ?? await user.getIdToken()}` } });
     const result = await response.json();
     if (!response.ok || !result.success) throw new Error(result.error || 'Profile unavailable');
     if (auth.currentUser?.uid === user.uid) setUserData(result.data as UserData);
@@ -87,14 +87,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!MiniKit.isInstalled()) throw new Error('Open Challenge ON inside World App.');
       const token = await getFreshWalletToken();
       if (run !== generation.current) return;
-      await syncUserData(user);
+      await syncUserData(user, token);
       if (run !== generation.current) return;
       const response = await fetch(apiUrl('/api/auth/world-id/session/request'), { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       const data = await response.json();
       if (run !== generation.current) return;
       if (!response.ok) throw new Error(data.error || 'Human verification is unavailable');
       if (data.verified === true) {
-        const profile = await syncUserData(user);
+        const profile = await syncUserData(user, token);
         if (run !== generation.current) return;
         if (profile.worldIdVerified !== true) throw new Error('Human verification is not confirmed');
         setAccessGranted(true);

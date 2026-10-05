@@ -19,8 +19,14 @@ function registerWalletProfileRoutes(app, admin, provider, contract, requireAuth
   const wallet = req => authenticatedWalletRecipient(req.authUser, req.authUser.wallet_address);
   app.get('/api/auth/profile', requireAuthenticatedUser, async (req, res) => {
     res.set('Cache-Control', 'no-store');
+    let address;
+    try { address = wallet(req); }
+    catch {
+      console.warn('wallet_profile_failed', { phase: 'wallet_policy' });
+      return res.status(403).json({ error: 'Profile unavailable; please sign in with your wallet again' });
+    }
+    let phase = 'profile_store';
     try {
-      const address = wallet(req);
       const ref = admin.firestore().collection('users').doc(req.authUser.uid);
       const profile = await admin.firestore().runTransaction(async tx => {
         const snapshot = await tx.get(ref);
@@ -31,9 +37,13 @@ function registerWalletProfileRoutes(app, admin, provider, contract, requireAuth
         tx.set(ref, value);
         return value;
       });
+      phase = 'human_session_store';
       const worldIdVerified = Boolean(await getHumanSession(pool, address, req.authUser.auth_time));
       return res.json({ success: true, data: { ...profile, worldIdVerified } });
-    } catch { return res.status(403).json({ error: 'Profile unavailable; please sign in with your wallet again' }); }
+    } catch {
+      console.warn('wallet_profile_failed', { phase });
+      return res.status(503).json({ error: 'Profile temporarily unavailable. Please retry.' });
+    }
   });
   app.post('/api/auth/onboarding-pending', requireAuthenticatedUser, async (req, res) => {
     try {

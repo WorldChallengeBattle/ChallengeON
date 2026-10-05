@@ -7,11 +7,11 @@ const code = ts.transpileModule(fs.readFileSync('src/contexts/AuthContext.tsx', 
 }).outputText;
 
 // Deterministic hook/transport fixtures; no production token or native proof.
-function fixture({ stored = false, requestVerified = stored, installed = true, mismatch = false } = {}) {
+function fixture({ stored = false, requestVerified = stored, installed = true, mismatch = false, staleProfileToken = false } = {}) {
   const states = [], effects = [], calls = [];
   let cursor = 0, observer, verified = stored;
   const wallet = '0x' + '12'.repeat(20);
-  const user = { uid: wallet, getIdToken: async () => 'fixture', getIdTokenResult: async () => ({ token: 'fixture',
+  const user = { uid: wallet, getIdToken: async () => staleProfileToken ? 'stale-fixture' : 'fixture', getIdTokenResult: async () => ({ token: 'fixture',
     claims: { wallet_auth_version: 2, wallet_verified: true, wallet_address: wallet, auth_time: Date.now() / 1000 } }) };
   const auth = { currentUser: user };
   const hooks = {
@@ -36,8 +36,11 @@ function fixture({ stored = false, requestVerified = stored, installed = true, m
     if (name.includes('WorldIdSessionVerification')) return { WorldIdSessionVerification: 'proof-widget' };
     if (name.includes('.png')) return 'brand.png';
     throw new Error(name);
-  }, fetch: async path => {
+  }, fetch: async (path, options) => {
     calls.push(path);
+    if (path.endsWith('/profile') && options.headers.Authorization !== 'Bearer fixture') {
+      return { ok: false, json: async () => ({ error: 'Stale wallet token' }) };
+    }
     return { ok: true, json: async () => path.endsWith('/profile')
       ? { success: true, data: { uid: wallet, worldIdVerified: verified } }
       : requestVerified ? { verified: true } : { signal: mismatch ? 'wrong' : wallet, rp_context: { nonce: 'nonce' } } };
@@ -60,6 +63,11 @@ async function main() {
   first.switchWallet(); await settle(); assert.notEqual(view(first)[0], 'protected-app');
   const returning = fixture({ stored: true }); returning.start(); await settle();
   assert.equal(view(returning)[0], 'protected-app'); assert.equal(view(returning)[1], null);
+  const freshFirst = fixture({ staleProfileToken: true }); freshFirst.start(); await settle();
+  assert.equal(view(freshFirst)[1]?.type, 'proof-widget');
+  assert.notEqual(view(freshFirst)[0], 'protected-app');
+  const freshReturning = fixture({ stored: true, staleProfileToken: true }); freshReturning.start(); await settle();
+  assert.equal(view(freshReturning)[0], 'protected-app');
   const cancelled = fixture(); cancelled.start(); await settle(); view(cancelled)[1].props.onClose();
   assert.notEqual(view(cancelled)[0], 'protected-app'); assert.equal(view(cancelled)[1], null);
   const failed = fixture(); failed.start(); await settle(); view(failed)[1].props.onError('fixture rejection');
