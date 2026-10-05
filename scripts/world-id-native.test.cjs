@@ -77,7 +77,22 @@ async function main() {
     assert.equal(envelope.payload.proof_request.proof_requests[0].identifier, 'proof_of_human');
     assert.equal(envelope.payload.proof_request.proof_requests[0].issuer_schema_id, 1);
     assert.equal(envelope.payload.signal, hashSignal(signal));
-    request.cancel();
+    listeners.get('message')({ data: { type: 'miniapp-verify-action', payload: {
+      status: 'success', proof_response: { id: 'fixture', version: 1, responses: [{
+        identifier: 'proof_of_human', issuer_schema_id: 1, expires_at_min: 0,
+        nullifier: `nil_${'a'.padStart(64, '0')}`,
+        proof: [1, 2, 3, 4, 5].map(value => value.toString(16).padStart(64, '0')).join('')
+      }] }
+    } } });
+    const nativeResult = await request.pollUntilCompletion({ timeout: 1000 });
+    assert.equal(nativeResult.success, true);
+    assert.deepEqual(nativeResult.result.responses[0].proof, ['1', '2', '3', '4', '5']);
+    const { validateLoginProof } = require('../backend/world-id-login');
+    const loginChallenge = { nonce: loginSigned.nonce, rp_id: config.rp_context.rp_id,
+      action, wallet, wallet_auth_time: authTime, expires_at: new Date(loginSigned.expiresAt * 1000) };
+    assert.deepEqual(validateLoginProof(nativeResult.result, loginChallenge, wallet, authTime), {
+      protocol: '4.0', identifier: 'proof_of_human', nullifier: '10'
+    });
     assert.equal(listeners.size, 0);
     global.window.WorldApp.supported_commands[0].supported_versions = [1];
     await assert.rejects(IDKit.createSession(config).constraints(constraint), /verify v2 is not supported/);
@@ -92,13 +107,12 @@ async function main() {
     } } });
     const legacyResult = await request.pollUntilCompletion({ timeout: 1000 });
     assert.equal(legacyResult.success, true);
-    const { validateLoginProof } = require('../backend/world-id-login');
     const identity = validateLoginProof(legacyResult.result, { nonce: loginSigned.nonce, rp_id: config.rp_context.rp_id,
       action, wallet, wallet_auth_time: authTime, expires_at: new Date(loginSigned.expiresAt * 1000) }, wallet, authTime);
     assert.equal(identity.identifier, 'orb');
     assert.equal(listeners.size, 0);
     console.log('Real portable SDK Android serialization and mocked native rejection passed; not a phone E2E test.');
-    console.log('Login-only uniqueness candidate: signed action, Proof of Human v2 and Orb v1 serialization passed; not native acceptance or repeat-login evidence.');
+    console.log('Login-only uniqueness: signed action, SDK-normalized native v4 PoH and v3 Orb backend validation passed; not a phone E2E test.');
   } finally {
     request?.cancel();
     global.fetch = previousFetch;

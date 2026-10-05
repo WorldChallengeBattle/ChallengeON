@@ -4,6 +4,7 @@ const { APP_ID, RP_ID, SIGNER, signalHash, normalizedNullifier } = require('./wo
 
 const LOGIN_ACTION = 'challengeon-human-login';
 const hex = /^0x[0-9a-fA-F]{1,64}$/;
+const uint256Decimal = value => typeof value === 'string' && /^(0|[1-9][0-9]{0,77})$/.test(value) && BigInt(value) < (1n << 256n);
 const loginSignal = (wallet, authTime, nonce) => `${wallet.toLowerCase()}:${authTime}:${nonce}`;
 
 async function getHumanLogin(pool, wallet, authTime) {
@@ -32,7 +33,7 @@ function validateLoginProof(result, challenge, wallet, authTime, now = Date.now(
     if (proof.identifier !== 'proof_of_human' || proof.issuer_schema_id !== 1 ||
         !Number.isSafeInteger(proof.expires_at_min) || proof.expires_at_min < 0 ||
         !Array.isArray(proof.proof) || proof.proof.length !== 5 ||
-        !proof.proof.every(value => typeof value === 'string' && hex.test(value))) {
+        !proof.proof.every(uint256Decimal)) {
       throw new Error('Proof of Human schema 1 is required');
     }
   } else if (proof.identifier !== 'orb' || typeof proof.merkle_root !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(proof.merkle_root) ||
@@ -108,20 +109,29 @@ function registerWorldIdLoginRoutes(app, pool, authenticate, env = process.env, 
     res.set('Cache-Control', 'no-store');
     let wallet;
     try { wallet = recipient(req); } catch { return res.status(403).json({ error: 'Sign in again with your wallet' }); }
+    let stage = 'configuration';
+    let upstreamStatus;
     try {
       if (!configured()) return res.status(503).json({ error: 'Human login verification is not configured' });
+      stage = 'challenge_lookup';
       const result = req.body?.result;
       if (typeof result?.nonce !== 'string' || !/^0x[0-9a-f]{64}$/.test(result.nonce)) throw new Error('Invalid nonce');
       const { rows } = await pool.query('SELECT * FROM world_id_human_login_requests WHERE nonce = $1', [result.nonce]);
+      stage = 'proof_validation';
       const identity = validateLoginProof(result, rows[0], wallet, req.authUser.auth_time);
+      stage = 'upstream_request';
       const response = await verifyProof(`https://developer.world.org/api/v4/verify/${RP_ID}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result), signal: AbortSignal.timeout(15000)
       });
+      if (Number.isInteger(response.status) && response.status >= 100 && response.status <= 599) upstreamStatus = response.status;
       if (!response.ok) throw new Error('Verification failed');
+      stage = 'upstream_validation';
       validateLoginVerification(await response.json(), identity);
+      stage = 'identity_binding';
       await bindHumanLogin(pool, result, wallet, req.authUser.auth_time, identity);
       return res.json({ success: true });
     } catch (error) {
+      console.warn(JSON.stringify({ event: 'human_login_verification_failed', stage, upstream_status: upstreamStatus }));
       if (error.code === '42P01' || error.code === '42501') return res.status(503).json({ error: 'Human login storage is not ready' });
       return res.status(error.code === '23505' ? 409 : 400).json({ error: 'Human login verification failed; start a new sign-in request' });
     }

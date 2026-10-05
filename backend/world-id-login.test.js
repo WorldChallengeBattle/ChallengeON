@@ -20,10 +20,14 @@ async function main() {
     responses: [{ identifier: legacy ? 'orb' : 'proof_of_human', nullifier,
       signal_hash: signalHash(loginSignal(w, at, n)), ...(legacy
         ? { merkle_root: '0x' + 'ab'.repeat(32), proof: '0x' + '12'.repeat(256) }
-        : { issuer_schema_id: 1, expires_at_min: 0, proof: ['0x1', '0x2', '0x3', '0x4', '0x5'] }) }]
+        : { issuer_schema_id: 1, expires_at_min: 0, proof: ['1', '2', '3', '4', '5'] }) }]
   });
   const result = proofFor();
   const identity = validateLoginProof(result, challenge, wallet, authTime);
+  for (const value of ['0x1', '-1', '1.5', '1e2', '01', '', ' 1', 1, null, (1n << 256n).toString(), '9'.repeat(79)]) {
+    assert.throws(() => validateLoginProof({ ...result, responses: [{ ...result.responses[0], proof: [value, '2', '3', '4', '5'] }] }, challenge, wallet, authTime));
+  }
+  validateLoginProof({ ...result, responses: [{ ...result.responses[0], proof: ['0', ((1n << 256n) - 1n).toString(), '3', '4', '5'] }] }, challenge, wallet, authTime);
   assert.deepEqual(identity, { protocol: '4.0', identifier: 'proof_of_human', nullifier: '10' });
   const legacy = proofFor(nonce, wallet, authTime, true);
   assert.equal(validateLoginProof(legacy, challenge, wallet, authTime).identifier, 'orb');
@@ -139,7 +143,8 @@ async function main() {
   registerWorldIdLoginRoutes(app, httpPool, authenticate, config, async (url, options) => {
     calls++; assert.equal(url, `https://developer.world.org/api/v4/verify/${RP_ID}`);
     const body = JSON.parse(options.body); sent.push(body);
-    return { ok: !upstreamFailure, json: async () => wrongVerification ? { ...verifiedFor(body), success: false } : verifiedFor(body) };
+    return { ok: !upstreamFailure, status: upstreamFailure ? 422 : 200,
+      json: async () => wrongVerification ? { ...verifiedFor(body), success: false } : verifiedFor(body) };
   });
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}/api/auth/world-id/login`;
@@ -147,6 +152,9 @@ async function main() {
   const send = proof => fetch(base + '/verify', { method: 'POST', headers: { Authorization: 'Bearer fixture', 'Content-Type': 'application/json' },
     body: JSON.stringify({ result: proof }) });
   const protectedRequest = () => fetch(base.replace('/api/auth/world-id/login', '/api/challenges'), { headers: { Authorization: 'Bearer fixture' } });
+  const warnings = [];
+  const previousWarn = console.warn;
+  console.warn = message => warnings.push(JSON.parse(message));
   try {
     assert.equal((await fetch(base + '/request', { method: 'POST' })).status, 401);
     assert.equal((await fetch(base + '/verify', { method: 'POST' })).status, 401);
@@ -189,9 +197,14 @@ async function main() {
       httpAuthTime++;
       for (let i = 0; i < 8; i++) assert.equal((await request()).status, 200);
       assert.equal((await request()).status, 429);
+      assert.deepEqual([...new Set(warnings.map(warning => warning.stage))].sort(),
+        ['challenge_lookup', 'proof_validation', 'upstream_request', 'upstream_validation']);
+      assert(warnings.some(warning => warning.stage === 'upstream_request' && warning.upstream_status === 422));
+      assert(warnings.every(warning => warning.event === 'human_login_verification_failed' &&
+        Object.keys(warning).every(key => ['event', 'stage', 'upstream_status'].includes(key))));
       console.log('Login HTTP: offline RP action signing, exact upstream forwarding, first/repeated login, and verifier failure/replay denial passed.');
     } else console.log('Configured login HTTP signing skipped: no local RP key; structural/DB tests still ran.');
-  } finally { await new Promise(resolve => server.close(resolve)); await db.close(); }
+  } finally { console.warn = previousWarn; await new Promise(resolve => server.close(resolve)); await db.close(); }
   console.log('Human login: v4 PoH/v3 Orb, fresh signal, same-owner repeat, cross-wallet/replay/identity replacement/old-login denial and RLS passed; rewards/sessions untouched.');
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; });
