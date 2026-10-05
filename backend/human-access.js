@@ -1,10 +1,11 @@
 const { getAddress, ZeroAddress } = require('ethers');
-const { getHumanSession } = require('./world-id-session');
+const { getHumanLogin } = require('./world-id-login');
 
 function createHumanAccessGate(pool, authenticate) {
   const bootstrap = new Set(['GET /auth/nonce', 'POST /auth/complete-siwe', 'GET /auth/profile',
     'POST /auth/world-id/request', 'POST /auth/world-id/verify',
-    'POST /auth/world-id/session/request', 'POST /auth/world-id/session/verify', 'GET /chain-config']);
+    'POST /auth/world-id/session/request', 'POST /auth/world-id/session/verify',
+    'POST /auth/world-id/login/request', 'POST /auth/world-id/login/verify', 'GET /chain-config']);
   const jobs = new Set(['GET /sync-now', 'POST /sync-empty-now', 'POST /videos/maintenance']);
   return function humanAccess(req, res, next) {
     const route = `${req.method} ${req.path}`;
@@ -18,7 +19,7 @@ function createHumanAccessGate(pool, authenticate) {
             String(req.authUser.uid).toLowerCase() !== wallet.toLowerCase()) throw new Error('Wallet login required');
       } catch { return res.status(403).json({ error: 'Wallet login required', code: 'wallet_required' }); }
       try {
-        if (!await getHumanSession(pool, wallet, req.authUser.auth_time)) {
+        if (!await getHumanLogin(pool, wallet, req.authUser.auth_time)) {
           return res.status(403).json({ error: 'World ID human verification required', code: 'human_required' });
         }
         res.set('Cache-Control', 'no-store');

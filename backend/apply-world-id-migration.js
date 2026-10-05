@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Client } = require('pg');
 const PROJECT = 'lkblcvkdwwyotcnhuunm';
+if (process.argv.includes('--sessions') && process.argv.includes('--human-login')) throw new Error('Choose one migration target');
 
 async function main() {
   const url = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null;
@@ -22,7 +23,9 @@ async function main() {
     host, user, password: process.env.PGPASSWORD, database: process.env.PGDATABASE, port: process.env.PGPORT || 5432,
     ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000 });
   const sessions = process.argv.includes('--sessions');
-  const tableNames = sessions ? ['world_id_login_requests', 'world_id_login_sessions', 'world_id_login_proofs']
+  const humanLogin = process.argv.includes('--human-login');
+  const tableNames = humanLogin ? ['world_id_human_login_requests', 'world_id_human_logins']
+    : sessions ? ['world_id_login_requests', 'world_id_login_sessions', 'world_id_login_proofs']
     : ['world_id_requests', 'world_id_welcome_bindings'];
   try {
     await client.connect();
@@ -30,8 +33,9 @@ async function main() {
       WHERE relnamespace = 'public'::regnamespace AND relname = ANY($1::text[])`, [tableNames])).rows;
     if (process.argv.includes('--apply')) {
       if (before.length) throw new Error('Target tables already exist; inspect instead of applying again');
-      await client.query(fs.readFileSync(path.join(__dirname, sessions
-        ? 'migrations/20261004_world_id_sessions.sql' : 'migrations/20261003_world_id.sql'), 'utf8'));
+      await client.query(fs.readFileSync(path.join(__dirname, humanLogin
+        ? 'migrations/20261005_world_id_human_login.sql' : sessions
+          ? 'migrations/20261004_world_id_sessions.sql' : 'migrations/20261003_world_id.sql'), 'utf8'));
     }
     const tables = (await client.query(`SELECT relname, relrowsecurity FROM pg_class
       WHERE relnamespace = 'public'::regnamespace AND relname = ANY($1::text[])`, [tableNames])).rows;

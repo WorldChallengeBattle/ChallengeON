@@ -10,6 +10,7 @@ const { matchesCronSecret } = require('./cron-auth');
 const { CHALLENGE_TTL_MS, validateSiweContext, authenticatedRewardRecipient } = require('./wallet-auth-policy');
 const { registerWorldIdRoutes, getWelcomeBinding, identityForClaim } = require('./world-id');
 const { registerWorldIdSessionRoutes } = require('./world-id-session');
+const { registerWorldIdLoginRoutes } = require('./world-id-login');
 const { createHumanAccessGate } = require('./human-access');
 const { registerWalletProfileRoutes } = require('./wallet-profile');
 
@@ -1590,6 +1591,7 @@ app.post('/api/auth/complete-siwe', async (req, res) => {
 // UNON Onboarding: Generate Signature for Claim Contract
 registerWorldIdRoutes(app, pool, requireAuthenticatedUser);
 registerWorldIdSessionRoutes(app, pool, requireAuthenticatedUser);
+registerWorldIdLoginRoutes(app, pool, requireAuthenticatedUser);
 registerWalletProfileRoutes(app, admin, provider, UNON_NETWORK_CONFIG.contracts.onboardingManager, requireAuthenticatedUser, pool);
 
 app.post('/api/auth/onboarding-signature', requireAuthenticatedUser, async (req, res) => {

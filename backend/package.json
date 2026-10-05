@@ -8,7 +8,7 @@
     "dev": "nodemon server.js",
     "test:cron": "node cron-auth.test.js",
     "test:secrets": "node runtime-secrets.test.js",
-    "test:auth": "node wallet-auth-policy.test.js && node network-config.test.js && node world-id.test.js && node world-id-session.test.js && node human-access.test.js && node wallet-profile.test.js",
+    "test:auth": "node wallet-auth-policy.test.js && node network-config.test.js && node world-id.test.js && node world-id-session.test.js && node world-id-login.test.js && node human-access.test.js && node wallet-profile.test.js",
     "test:matcher": "node challenge-matcher.test.js && node region-classifier.test.js",
     "youtube:auth-url": "node youtube-oauth.js url",
     "youtube:token": "node youtube-oauth.js token",

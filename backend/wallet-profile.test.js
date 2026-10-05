@@ -19,12 +19,14 @@ async function main() {
     }
   });
   firestore.FieldValue = { serverTimestamp: () => 'fixture-time' };
-  const pool = { query: async (_, args) => {
+  const pool = { query: async (sql, args) => {
     sessionCalls++;
+    assert.match(sql, /world_id_human_logins/);
     assert.equal(args[1], wallet);
     assert.equal(args[2], authTime);
+    assert.equal(args[3], 'challengeon-human-login');
     if (sessionFailure) throw new Error('secret database error');
-    return { rows: trusted ? [{ session_id: 'fixture-session' }] : [] };
+    return { rows: trusted ? [{ nullifier: '10' }] : [] };
   } };
   registerWalletProfileRoutes({ get: (path, _, handler) => routes.set(path, handler), post: () => {} },
     { firestore }, null, null, () => {}, pool);
@@ -55,7 +57,7 @@ async function main() {
     assert.deepEqual(logs, [
       ['wallet_profile_failed', { phase: 'wallet_policy' }],
       ['wallet_profile_failed', { phase: 'profile_store' }],
-      ['wallet_profile_failed', { phase: 'human_session_store' }]
+      ['wallet_profile_failed', { phase: 'human_login_store' }]
     ]);
   } finally { console.warn = originalWarn; }
   console.log('Profile route: wallet denial, store outages, trusted session override, creation and secret-free diagnostics passed.');

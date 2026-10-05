@@ -4,8 +4,8 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 // Exercise the component's callbacks without a native World App or real proof.
-function widget(fetch, session = false) {
-  const source = fs.readFileSync(`src/components/${session ? 'WorldIdSessionVerification' : 'WorldIdWelcomeVerification'}.tsx`, 'utf8');
+function widget(fetch, session = false, login = false) {
+  const source = fs.readFileSync(`src/components/${login ? 'WorldIdLoginVerification' : session ? 'WorldIdSessionVerification' : 'WorldIdWelcomeVerification'}.tsx`, 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX
   } }).outputText;
@@ -21,9 +21,10 @@ function widget(fetch, session = false) {
   const errors = [];
   let successes = 0;
   let closes = 0;
-  const component = session ? exports.WorldIdSessionVerification : exports.WorldIdWelcomeVerification;
+  const component = login ? exports.WorldIdLoginVerification : session ? exports.WorldIdSessionVerification : exports.WorldIdWelcomeVerification;
   const props = component({
-    request: { signal: 'fixture', rp_context: {}, existing_session_id: 'session_fixture' }, user: { getIdToken: async () => 'fixture' },
+    request: { signal: 'fixture', action: 'challengeon-human-login', rp_context: {}, existing_session_id: 'session_fixture' },
+    token: 'fresh-fixture', user: { getIdToken: async () => 'stale-fixture' },
     onClose: () => { closes++; }, onVerified: () => { successes++; }, onError: error => errors.push(error)
   });
   return { props, errors, successes: () => successes, closes: () => closes };
@@ -72,7 +73,7 @@ async function main() {
   const session = widget(async (path, options) => {
     sessionCalls++;
     assert.equal(path, '/api/auth/world-id/session/verify');
-    assert.equal(options.headers.Authorization, 'Bearer fixture');
+    assert.equal(options.headers.Authorization, 'Bearer stale-fixture');
     assert.equal(JSON.parse(options.body).result.session_id, 'session_fixture');
     return { ok: true, json: async () => ({ success: true }) };
   }, true);
@@ -108,6 +109,32 @@ async function main() {
   });
   assert.match(untrustedReport.errors[0], /mini_app\/unknown\/verify-unknown\/sdk/);
   assert.doesNotMatch(untrustedReport.errors[0], /private fixture/);
+  const loginResult = { protocol_version: '3.0', nonce: 'fixture', responses: [{ identifier: 'orb' }] };
+  const login = widget(async (path, options) => {
+    assert.equal(path, '/api/auth/world-id/login/verify');
+    assert.equal(options.headers.Authorization, 'Bearer fresh-fixture');
+    assert.deepEqual(JSON.parse(options.body), { result: loginResult });
+    return { ok: true, json: async () => ({ success: true }) };
+  }, false, true);
+  assert.equal(login.props.action, 'challengeon-human-login');
+  assert.equal(login.props.allow_legacy_proofs, true);
+  assert.equal(login.props.environment, 'production');
+  assert.equal(login.props.preset.signal, 'fixture');
+  login.props.onSuccess(); assert.equal(login.successes(), 0);
+  await login.props.handleVerify(loginResult);
+  login.props.onSuccess(); login.props.onError('unknown'); login.props.onOpenChange(false);
+  assert.equal(login.successes(), 1); assert.equal(login.closes(), 0); assert.deepEqual(login.errors, []);
+  const failedLogin = widget(async () => ({ ok: false, json: async () => ({ error: 'Login rejected' }) }), false, true);
+  await assert.rejects(failedLogin.props.handleVerify({}));
+  failedLogin.props.onError('nullifier_replayed'); failedLogin.props.onOpenChange(false); failedLogin.props.onSuccess();
+  assert.deepEqual(failedLogin.errors, ['Login rejected']); assert.equal(failedLogin.successes(), 0);
+  const cancelledLogin = widget(async () => ({}), false, true);
+  cancelledLogin.props.onOpenChange(false); assert.equal(cancelledLogin.closes(), 1);
+  const nativeLogin = widget(async () => { throw new Error('Backend must not be called'); }, false, true);
+  nativeLogin.props.onError('malformed_request', { transport: 'mini_app', mini_app: { platform: 'android', verify_version: 2 },
+    response_payload: { status: 'error', message: 'private fixture' } });
+  assert.match(nativeLogin.errors[0], /mini_app\/android\/verify-v2\/native-error/);
+  assert.doesNotMatch(nativeLogin.errors[0], /private fixture/); assert.equal(nativeLogin.successes(), 0);
   const app = fs.readFileSync('src/App.tsx', 'utf8');
   assert.match(app, /userData\?\.worldIdVerified === true && <div className="profile-human-verified">/);
   console.log('World ID UI callbacks: backend failure retained, late error suppressed only after server success, badge gated.');

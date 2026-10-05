@@ -7,10 +7,12 @@ const code = ts.transpileModule(fs.readFileSync('src/contexts/AuthContext.tsx', 
 }).outputText;
 
 // Deterministic hook/transport fixtures; no production token or native proof.
-function fixture({ stored = false, requestVerified = stored, installed = true, mismatch = false, staleProfileToken = false } = {}) {
+function fixture({ stored = false, requestVerified = stored, installed = true, mismatch = false, staleProfileToken = false, requestOverride = {} } = {}) {
   const states = [], effects = [], calls = [];
   let cursor = 0, observer, verified = stored;
   const wallet = '0x' + '12'.repeat(20);
+  const authTime = Math.floor(Date.now() / 1000);
+  const nonce = '0x' + 'ab'.repeat(32);
   const user = { uid: wallet, getIdToken: async () => staleProfileToken ? 'stale-fixture' : 'fixture', getIdTokenResult: async () => ({ token: 'fixture',
     claims: { wallet_auth_version: 2, wallet_verified: true, wallet_address: wallet, auth_time: Date.now() / 1000 } }) };
   const auth = { currentUser: user };
@@ -33,7 +35,7 @@ function fixture({ stored = false, requestVerified = stored, installed = true, m
     if (name === 'lucide-react') return { RefreshCw: 'retry-icon', Shield: 'shield' };
     if (name === '../firebase') return { auth };
     if (name === '../config/api') return { apiUrl: path => path };
-    if (name.includes('WorldIdSessionVerification')) return { WorldIdSessionVerification: 'proof-widget' };
+    if (name.includes('WorldIdLoginVerification')) return { WorldIdLoginVerification: 'proof-widget' };
     if (name.includes('.png')) return 'brand.png';
     throw new Error(name);
   }, fetch: async (path, options) => {
@@ -43,7 +45,9 @@ function fixture({ stored = false, requestVerified = stored, installed = true, m
     }
     return { ok: true, json: async () => path.endsWith('/profile')
       ? { success: true, data: { uid: wallet, worldIdVerified: verified } }
-      : requestVerified ? { verified: true } : { signal: mismatch ? 'wrong' : wallet, rp_context: { nonce: 'nonce' } } };
+      : requestVerified ? { verified: true } : { wallet: mismatch ? 'wrong' : wallet, wallet_auth_time: authTime,
+        app_id: 'app_a5a8b0a2d65c376bf242d317a9f4ac78', action: 'challengeon-human-login',
+        signal: `${wallet}:${authTime}:${nonce}`, rp_context: { nonce, rp_id: 'rp_cba96127b0447fa4' }, ...requestOverride } };
   } });
   const render = () => { cursor = 0; return exports.AuthProvider({ children: 'protected-app' }); };
   render(); effects.forEach(fn => fn());
@@ -56,8 +60,10 @@ async function main() {
   const first = fixture(); first.start(); await settle();
   assert.notEqual(view(first)[0], 'protected-app');
   assert.equal(view(first)[1].type, 'proof-widget');
-  assert(first.calls.includes('/api/auth/world-id/session/request'));
+  assert(first.calls.includes('/api/auth/world-id/login/request'));
   assert(!first.calls.includes('/api/auth/world-id/request'));
+  assert(!first.calls.includes('/api/auth/world-id/session/request'));
+  assert.equal(view(first)[1].props.token, 'fixture');
   first.verified(); view(first)[1].props.onVerified(); await settle();
   assert.equal(view(first)[0], 'protected-app');
   first.switchWallet(); await settle(); assert.notEqual(view(first)[0], 'protected-app');
@@ -76,6 +82,11 @@ async function main() {
   assert.notEqual(view(stale)[0], 'protected-app');
   const mismatched = fixture({ mismatch: true }); mismatched.start(); await settle();
   assert.notEqual(view(mismatched)[0], 'protected-app'); assert.equal(view(mismatched)[1], null);
+  for (const requestOverride of [{ action: 'challengeon-welcome-reward' }, { signal: 'old signal' },
+    { app_id: 'app_wrong' }, { wallet_auth_time: 0 }, { rp_context: { nonce: 'bad', rp_id: 'rp_wrong' } }]) {
+    const invalid = fixture({ requestOverride }); invalid.start(); await settle();
+    assert.notEqual(view(invalid)[0], 'protected-app'); assert.equal(view(invalid)[1], null);
+  }
   const outside = fixture({ installed: false }); outside.start(); await settle();
   assert.notEqual(view(outside)[0], 'protected-app'); assert.equal(outside.calls.length, 0);
   const apiCode = ts.transpileModule(fs.readFileSync('src/config/apiFetch.ts', 'utf8'), {

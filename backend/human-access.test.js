@@ -8,9 +8,10 @@ async function main() {
   let unavailable = false;
   const pool = { query: async (sql, args) => {
     if (unavailable) throw new Error('DB unavailable');
-    assert.match(sql, /world_id_login_sessions/);
+    assert.match(sql, /world_id_human_logins/);
     assert.equal(args[2], 100);
-    return { rows: binding ? [{ session_id: 'fixture' }] : [] };
+    assert.equal(args[3], 'challengeon-human-login');
+    return { rows: binding ? [{ nullifier: '10' }] : [] };
   } };
   const app = express();
   const authenticate = (req, res, next) => {
@@ -33,6 +34,8 @@ async function main() {
     assert.equal((await request('/api/auth/world-id/request', 'POST')).status, 200);
     assert.equal((await request('/api/auth/world-id/session/request', 'POST')).status, 200);
     assert.equal((await request('/api/auth/world-id/session/verify', 'POST')).status, 200);
+    assert.equal((await request('/api/auth/world-id/login/request', 'POST')).status, 200);
+    assert.equal((await request('/api/auth/world-id/login/verify', 'POST')).status, 200);
     assert.equal((await request('/api/chain-config')).status, 200);
     for (const [path, method] of [['/api/challenges', 'GET'], ['/api/videos/upload', 'POST'], ['/api/admin/me', 'GET'],
       ['/api/challenges/x/vote', 'POST'], ['/api/auth/onboarding-signature', 'POST'], ['/api/auth/profile/extra', 'GET']]) {

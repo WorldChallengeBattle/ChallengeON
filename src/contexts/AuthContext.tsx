@@ -4,7 +4,7 @@ import { MiniKit } from '@worldcoin/minikit-js';
 import { RefreshCw, Shield } from 'lucide-react';
 import { auth } from '../firebase';
 import { apiUrl } from '../config/api';
-import { WorldIdSessionVerification, type HumanSessionRequest } from '../components/WorldIdSessionVerification';
+import { WorldIdLoginVerification, type HumanLoginRequest } from '../components/WorldIdLoginVerification';
 import brandIcon from '../assets/brand/ChallengeOnICO.png';
 
 interface UserData {
@@ -35,7 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [accessGranted, setAccessGranted] = useState(false);
   const [error, setError] = useState('');
-  const [proofRequest, setProofRequest] = useState<HumanSessionRequest | null>(null);
+  const [proofRequest, setProofRequest] = useState<(HumanLoginRequest & { token: string }) | null>(null);
   const hasAttemptedAutoLoginRef = useRef(false);
   const isAuthenticatingRef = useRef(false);
   const generation = useRef(0);
@@ -89,7 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (run !== generation.current) return;
       await syncUserData(user, token);
       if (run !== generation.current) return;
-      const response = await fetch(apiUrl('/api/auth/world-id/session/request'), { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const response = await fetch(apiUrl('/api/auth/world-id/login/request'), { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       const data = await response.json();
       if (run !== generation.current) return;
       if (!response.ok) throw new Error(data.error || 'Human verification is unavailable');
@@ -99,9 +99,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (profile.worldIdVerified !== true) throw new Error('Human verification is not confirmed');
         setAccessGranted(true);
       } else {
-        if (data.signal !== user.uid.toLowerCase()) throw new Error('Sign in with the same wallet again');
+        if (data.wallet !== user.uid.toLowerCase() || data.action !== 'challengeon-human-login' ||
+            data.app_id !== 'app_a5a8b0a2d65c376bf242d317a9f4ac78' || data.rp_context?.rp_id !== 'rp_cba96127b0447fa4' ||
+            !/^0x[0-9a-f]{64}$/.test(data.rp_context?.nonce || '') ||
+            !Number.isSafeInteger(data.wallet_auth_time) || data.wallet_auth_time <= 0 ||
+            data.signal !== `${data.wallet}:${data.wallet_auth_time}:${data.rp_context.nonce}`) {
+          throw new Error('Invalid human login request; sign in with the same wallet again');
+        }
         proofAccepted.current = false;
-        setProofRequest(data);
+        setProofRequest({ ...data, token });
       }
     } catch (cause) {
       if (run === generation.current) setError(cause instanceof Error ? cause.message : 'Sign-in failed');
@@ -176,8 +182,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         </button>}
       </main>
     )}
-    {proofRequest && currentUser && proofRequest.signal === currentUser.uid.toLowerCase() && <WorldIdSessionVerification
-      key={proofRequest.rp_context.nonce} request={proofRequest} user={currentUser}
+    {proofRequest && currentUser && proofRequest.wallet === currentUser.uid.toLowerCase() && <WorldIdLoginVerification
+      key={proofRequest.rp_context.nonce} request={proofRequest} token={proofRequest.token}
       onVerified={() => { void finishProof(); }}
       onClose={() => {
         if (!proofAccepted.current) { setProofRequest(null); setError('Human verification was not completed. Please retry.'); }

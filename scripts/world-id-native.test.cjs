@@ -14,7 +14,7 @@ async function main() {
   };
   let request;
   try {
-    const { IDKit, CredentialRequest } = await import('@worldcoin/idkit-core');
+    const { IDKit, CredentialRequest, proofOfHuman, hashSignal } = await import('@worldcoin/idkit-core');
     const { signRequest } = await import('@worldcoin/idkit-core/signing');
     // Public test key only; no production key or live proof is used.
     const signed = signRequest({ signingKeyHex: `0x${'1'.padStart(64, '0')}`, ttl: 300 });
@@ -56,9 +56,49 @@ async function main() {
     assert.equal(envelope.payload.proof_request.proof_type, 'session');
     request.cancel();
     assert.equal(listeners.size, 0);
+
+    // Compare a login-only action candidate without creating a Portal action.
+    const action = 'challengeon-human-login';
+    const loginSigned = signRequest({ signingKeyHex: `0x${'1'.padStart(64, '0')}`, action, ttl: 300 });
+    const loginConfig = { ...config, action, allow_legacy_proofs: true, rp_context: {
+      ...config.rp_context, nonce: loginSigned.nonce, created_at: loginSigned.createdAt,
+      expires_at: loginSigned.expiresAt, signature: loginSigned.sig
+    } };
+    const wallet = `0x${'12'.repeat(20)}`;
+    const authTime = Math.floor(Date.now() / 1000) - 10;
+    const signal = `${wallet}:${authTime}:${loginSigned.nonce}`;
+    request = await IDKit.request(loginConfig).preset(proofOfHuman({ signal }));
+    assert.equal(envelope.version, 2);
+    assert.equal(envelope.payload.action, action);
+    assert.equal(envelope.payload.allow_legacy_proofs, true);
+    assert.equal(envelope.payload.verification_level, 'orb');
+    assert.equal(envelope.payload.proof_request.proof_type, 'uniqueness');
+    assert.equal(envelope.payload.proof_request.action, hashSignal(action));
+    assert.equal(envelope.payload.proof_request.proof_requests[0].identifier, 'proof_of_human');
+    assert.equal(envelope.payload.proof_request.proof_requests[0].issuer_schema_id, 1);
+    assert.equal(envelope.payload.signal, hashSignal(signal));
+    request.cancel();
+    assert.equal(listeners.size, 0);
     global.window.WorldApp.supported_commands[0].supported_versions = [1];
     await assert.rejects(IDKit.createSession(config).constraints(constraint), /verify v2 is not supported/);
+    request = await IDKit.request(loginConfig).preset(proofOfHuman({ signal }));
+    assert.equal(envelope.version, 1);
+    assert.equal(envelope.payload.action, action);
+    assert.equal(envelope.payload.verification_level, 'orb');
+    assert.equal(envelope.payload.signal, hashSignal(signal));
+    listeners.get('message')({ data: { type: 'miniapp-verify-action', payload: {
+      status: 'success', verification_level: 'orb', nullifier_hash: '0xa',
+      merkle_root: `0x${'ab'.repeat(32)}`, proof: `0x${'12'.repeat(256)}`
+    } } });
+    const legacyResult = await request.pollUntilCompletion({ timeout: 1000 });
+    assert.equal(legacyResult.success, true);
+    const { validateLoginProof } = require('../backend/world-id-login');
+    const identity = validateLoginProof(legacyResult.result, { nonce: loginSigned.nonce, rp_id: config.rp_context.rp_id,
+      action, wallet, wallet_auth_time: authTime, expires_at: new Date(loginSigned.expiresAt * 1000) }, wallet, authTime);
+    assert.equal(identity.identifier, 'orb');
+    assert.equal(listeners.size, 0);
     console.log('Real portable SDK Android serialization and mocked native rejection passed; not a phone E2E test.');
+    console.log('Login-only uniqueness candidate: signed action, Proof of Human v2 and Orb v1 serialization passed; not native acceptance or repeat-login evidence.');
   } finally {
     request?.cancel();
     global.fetch = previousFetch;
