@@ -1,5 +1,5 @@
 const { getAddress, ZeroAddress } = require('ethers');
-const { getHumanLogin } = require('./world-id-login');
+const { getHumanSession } = require('./world-id-session');
 
 function createHumanAccessGate(pool, authenticate) {
   const bootstrap = new Set(['GET /auth/nonce', 'POST /auth/complete-siwe', 'GET /auth/profile',
@@ -19,7 +19,7 @@ function createHumanAccessGate(pool, authenticate) {
             String(req.authUser.uid).toLowerCase() !== wallet.toLowerCase()) throw new Error('Wallet login required');
       } catch { return res.status(403).json({ error: 'Wallet login required', code: 'wallet_required' }); }
       try {
-        if (!await getHumanLogin(pool, wallet, req.authUser.auth_time)) {
+        if (!await getHumanSession(pool, wallet, req.authUser.auth_time)) {
           return res.status(403).json({ error: 'World ID human verification required', code: 'human_required' });
         }
         res.set('Cache-Control', 'no-store');

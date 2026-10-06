@@ -73,7 +73,7 @@ async function main() {
   const session = widget(async (path, options) => {
     sessionCalls++;
     assert.equal(path, '/api/auth/world-id/session/verify');
-    assert.equal(options.headers.Authorization, 'Bearer stale-fixture');
+    assert.equal(options.headers.Authorization, 'Bearer fresh-fixture');
     assert.equal(JSON.parse(options.body).result.session_id, 'session_fixture');
     return { ok: true, json: async () => ({ success: true }) };
   }, true);

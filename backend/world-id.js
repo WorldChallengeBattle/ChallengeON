@@ -124,5 +124,7 @@ function registerWorldIdRoutes(app, pool, requireAuthenticatedUser, env = proces
   });
 }
 
-module.exports = { ACTION, APP_ID, RP_ID, SIGNER, signalHash, normalizedNullifier, identityForClaim,
+const uint256Decimal = value => typeof value === 'string' && /^(0|[1-9][0-9]{0,77})$/.test(value) && BigInt(value) < (1n << 256n);
+
+module.exports = { ACTION, APP_ID, RP_ID, SIGNER, signalHash, normalizedNullifier, uint256Decimal, identityForClaim,
   validateProof, validateVerification, bindIdentity, getWelcomeBinding, registerWorldIdRoutes };

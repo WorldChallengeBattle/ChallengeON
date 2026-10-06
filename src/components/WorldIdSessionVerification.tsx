@@ -1,18 +1,19 @@
 import { IDKitSessionWidget, CredentialRequest, type RpContext } from '@worldcoin/idkit';
-import type { User } from 'firebase/auth';
 import { useRef } from 'react';
 import { apiUrl } from '../config/api';
 
 export type HumanSessionRequest = {
   app_id: `app_${string}`;
+  wallet: string;
+  wallet_auth_time: number;
   signal: string;
   existing_session_id: `session_${string}` | null;
   rp_context: RpContext;
 };
 
-export function WorldIdSessionVerification({ request, user, onClose, onVerified, onError }: {
+export function WorldIdSessionVerification({ request, token, onClose, onVerified, onError }: {
   request: HumanSessionRequest;
-  user: User;
+  token: string;
   onClose: () => void;
   onVerified: () => void;
   onError: (message: string) => void;
@@ -36,7 +37,7 @@ export function WorldIdSessionVerification({ request, user, onClose, onVerified,
       try {
         const response = await fetch(apiUrl('/api/auth/world-id/session/verify'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ result })
         });
         const data = await response.json();

@@ -1,10 +1,9 @@
 const { Wallet } = require('ethers');
 const { authenticatedWalletRecipient } = require('./wallet-auth-policy');
-const { APP_ID, RP_ID, SIGNER, signalHash, normalizedNullifier } = require('./world-id');
+const { APP_ID, RP_ID, SIGNER, signalHash, normalizedNullifier, uint256Decimal } = require('./world-id');
 
 const LOGIN_ACTION = 'challengeon-human-login';
 const hex = /^0x[0-9a-fA-F]{1,64}$/;
-const uint256Decimal = value => typeof value === 'string' && /^(0|[1-9][0-9]{0,77})$/.test(value) && BigInt(value) < (1n << 256n);
 const loginSignal = (wallet, authTime, nonce) => `${wallet.toLowerCase()}:${authTime}:${nonce}`;
 
 async function getHumanLogin(pool, wallet, authTime) {

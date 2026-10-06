@@ -57,6 +57,40 @@ async function main() {
     request.cancel();
     assert.equal(listeners.size, 0);
 
+    // Use real SDK conversion for session creation/return, not hand-shaped decimal proofs.
+    const { sessionSignal, validateSessionProof } = require('../backend/world-id-session');
+    const sessionWallet = `0x${'12'.repeat(20)}`;
+    const sessionAuthTime = Math.floor(Date.now() / 1000) - 10;
+    await assert.rejects(IDKit.createSession(config).preset(proofOfHuman()), /Presets are not supported/);
+    for (const returning of [false, true]) {
+      const sessionSigned = signRequest({ signingKeyHex: `0x${'1'.padStart(64, '0')}`, ttl: 300 });
+      const sessionConfig = { ...config, rp_context: { ...config.rp_context, nonce: sessionSigned.nonce,
+        created_at: sessionSigned.createdAt, expires_at: sessionSigned.expiresAt, signature: sessionSigned.sig } };
+      const signal = sessionSignal(sessionWallet, sessionAuthTime, sessionSigned.nonce);
+      const builder = returning ? IDKit.proveSession(sessionId, sessionConfig) : IDKit.createSession(sessionConfig);
+      request = await builder.constraints(CredentialRequest('proof_of_human', { signal }));
+      assert.equal(envelope.payload.proof_request.session_id, returning ? sessionId : 'create');
+      assert.equal(envelope.payload.allow_legacy_proofs, false);
+      assert.equal(envelope.payload.proof_request.proof_requests[0].identifier, 'proof_of_human');
+      listeners.get('message')({ data: { type: 'miniapp-verify-action', payload: {
+        status: 'success', proof_response: { id: 'fixture', version: 1, session_id: sessionId, responses: [{
+          identifier: 'proof_of_human', issuer_schema_id: 1, expires_at_min: 0,
+          session_nullifier: `snil_${'a'.padStart(64, '0')}02${'b'.padStart(62, '0')}`,
+          proof: [1, 2, 3, 4, 5].map(value => value.toString(16).padStart(64, '0')).join('')
+        }] }
+      } } });
+      const completion = await request.pollUntilCompletion({ timeout: 1000 });
+      assert.equal(completion.success, true);
+      assert.deepEqual(completion.result.responses[0].proof, ['1', '2', '3', '4', '5']);
+      const challenge = { wallet: sessionWallet, wallet_auth_time: sessionAuthTime, rp_id: config.rp_context.rp_id,
+        nonce: sessionSigned.nonce, expires_at: new Date(sessionSigned.expiresAt * 1000),
+        expected_session_id: returning ? sessionId : null };
+      assert.equal(validateSessionProof(completion.result, challenge, sessionWallet, sessionAuthTime).nullifier, '10');
+      assert.throws(() => validateSessionProof({ ...completion.result, nonce: `0x${'ab'.repeat(32)}` },
+        { ...challenge, nonce: `0x${'ab'.repeat(32)}` }, sessionWallet, sessionAuthTime));
+      assert.equal(listeners.size, 0);
+    }
+
     // Compare a login-only action candidate without creating a Portal action.
     const action = 'challengeon-human-login';
     const loginSigned = signRequest({ signingKeyHex: `0x${'1'.padStart(64, '0')}`, action, ttl: 300 });
@@ -112,6 +146,7 @@ async function main() {
     assert.equal(identity.identifier, 'orb');
     assert.equal(listeners.size, 0);
     console.log('Real portable SDK Android serialization and mocked native rejection passed; not a phone E2E test.');
+    console.log('Session creation/return: SDK-decoded schema 1 decimal proofs accepted; nonce substitution denied. Mocked native success is not device support evidence.');
     console.log('Login-only uniqueness: signed action, SDK-normalized native v4 PoH and v3 Orb backend validation passed; not a phone E2E test.');
   } finally {
     request?.cancel();

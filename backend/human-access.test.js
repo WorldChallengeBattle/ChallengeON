@@ -8,10 +8,10 @@ async function main() {
   let unavailable = false;
   const pool = { query: async (sql, args) => {
     if (unavailable) throw new Error('DB unavailable');
-    assert.match(sql, /world_id_human_logins/);
+    assert.match(sql, /world_id_login_sessions/);
     assert.equal(args[2], 100);
-    assert.equal(args[3], 'challengeon-human-login');
-    return { rows: binding ? [{ nullifier: '10' }] : [] };
+    assert.equal(args.length, 3);
+    return { rows: binding ? [{ session_id: 'session_fixture' }] : [] };
   } };
   const app = express();
   const authenticate = (req, res, next) => {

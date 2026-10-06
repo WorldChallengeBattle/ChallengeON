@@ -35,7 +35,7 @@ function fixture({ stored = false, requestVerified = stored, installed = true, m
     if (name === 'lucide-react') return { RefreshCw: 'retry-icon', Shield: 'shield' };
     if (name === '../firebase') return { auth };
     if (name === '../config/api') return { apiUrl: path => path };
-    if (name.includes('WorldIdLoginVerification')) return { WorldIdLoginVerification: 'proof-widget' };
+    if (name.includes('WorldIdSessionVerification')) return { WorldIdSessionVerification: 'proof-widget' };
     if (name.includes('.png')) return 'brand.png';
     throw new Error(name);
   }, fetch: async (path, options) => {
@@ -46,7 +46,7 @@ function fixture({ stored = false, requestVerified = stored, installed = true, m
     return { ok: true, json: async () => path.endsWith('/profile')
       ? { success: true, data: { uid: wallet, worldIdVerified: verified } }
       : requestVerified ? { verified: true } : { wallet: mismatch ? 'wrong' : wallet, wallet_auth_time: authTime,
-        app_id: 'app_a5a8b0a2d65c376bf242d317a9f4ac78', action: 'challengeon-human-login',
+        app_id: 'app_a5a8b0a2d65c376bf242d317a9f4ac78', existing_session_id: null,
         signal: `${wallet}:${authTime}:${nonce}`, rp_context: { nonce, rp_id: 'rp_cba96127b0447fa4' }, ...requestOverride } };
   } });
   const render = () => { cursor = 0; return exports.AuthProvider({ children: 'protected-app' }); };
@@ -60,9 +60,9 @@ async function main() {
   const first = fixture(); first.start(); await settle();
   assert.notEqual(view(first)[0], 'protected-app');
   assert.equal(view(first)[1].type, 'proof-widget');
-  assert(first.calls.includes('/api/auth/world-id/login/request'));
+  assert(first.calls.includes('/api/auth/world-id/session/request'));
   assert(!first.calls.includes('/api/auth/world-id/request'));
-  assert(!first.calls.includes('/api/auth/world-id/session/request'));
+  assert(!first.calls.includes('/api/auth/world-id/login/request'));
   assert.equal(view(first)[1].props.token, 'fixture');
   first.verified(); view(first)[1].props.onVerified(); await settle();
   assert.equal(view(first)[0], 'protected-app');
@@ -72,6 +72,11 @@ async function main() {
   const freshFirst = fixture({ staleProfileToken: true }); freshFirst.start(); await settle();
   assert.equal(view(freshFirst)[1]?.type, 'proof-widget');
   assert.notEqual(view(freshFirst)[0], 'protected-app');
+  freshFirst.verified(); view(freshFirst)[1].props.onVerified(); await settle();
+  assert.equal(view(freshFirst)[0], 'protected-app');
+  const saved = fixture({ requestOverride: { existing_session_id: `session_${'12'.repeat(64)}` } });
+  saved.start(); await settle();
+  assert.equal(view(saved)[1].props.request.existing_session_id, `session_${'12'.repeat(64)}`);
   const freshReturning = fixture({ stored: true, staleProfileToken: true }); freshReturning.start(); await settle();
   assert.equal(view(freshReturning)[0], 'protected-app');
   const cancelled = fixture(); cancelled.start(); await settle(); view(cancelled)[1].props.onClose();
@@ -83,7 +88,8 @@ async function main() {
   const mismatched = fixture({ mismatch: true }); mismatched.start(); await settle();
   assert.notEqual(view(mismatched)[0], 'protected-app'); assert.equal(view(mismatched)[1], null);
   for (const requestOverride of [{ action: 'challengeon-welcome-reward' }, { signal: 'old signal' },
-    { app_id: 'app_wrong' }, { wallet_auth_time: 0 }, { rp_context: { nonce: 'bad', rp_id: 'rp_wrong' } }]) {
+    { app_id: 'app_wrong' }, { wallet_auth_time: 0 }, { existing_session_id: 'session_bad' },
+    { existing_session_id: undefined }, { rp_context: { nonce: 'bad', rp_id: 'rp_wrong' } }]) {
     const invalid = fixture({ requestOverride }); invalid.start(); await settle();
     assert.notEqual(view(invalid)[0], 'protected-app'); assert.equal(view(invalid)[1], null);
   }

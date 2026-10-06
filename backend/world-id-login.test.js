@@ -182,7 +182,7 @@ async function main() {
       wrongVerification = true; assert.equal((await send(fixture)).status, 400); wrongVerification = false;
       assert.equal(await getHumanLogin(pool, httpWallet, httpAuthTime), null);
       assert.equal((await send(fixture)).status, 200); assert.deepEqual(sent.at(-1), fixture);
-      assert.equal((await protectedRequest()).status, 200);
+      assert.equal((await protectedRequest()).status, 403);
       const verifiedCalls = calls;
       assert.equal((await send(fixture)).status, 400); assert.equal(calls, verifiedCalls);
       assert.deepEqual(await (await request()).json(), { verified: true });
@@ -192,7 +192,7 @@ async function main() {
       assert.notEqual(repeated.rp_context.nonce, data.rp_context.nonce);
       assert.equal((await send(fixture)).status, 400);
       assert.equal((await send(proofFor(repeated.rp_context.nonce, httpWallet, httpAuthTime, false, '0xc'))).status, 200);
-      assert.equal((await protectedRequest()).status, 200);
+      assert.equal((await protectedRequest()).status, 403);
       assert.equal(await getHumanLogin(pool, httpWallet, httpAuthTime - 1), null);
       httpAuthTime++;
       for (let i = 0; i < 8; i++) assert.equal((await request()).status, 200);
