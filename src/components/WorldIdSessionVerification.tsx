@@ -30,7 +30,6 @@ export function WorldIdSessionVerification({ request, token, onClose, onVerified
     rp_context={request.rp_context}
     existing_session_id={request.existing_session_id || undefined}
     environment="production"
-    action_description="Sign in to Challenge ON"
     constraints={CredentialRequest('proof_of_human', { signal: request.signal })}
     handleVerify={async result => {
       backendError.current = null;

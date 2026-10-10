@@ -1,4 +1,30 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const ts = require('typescript');
+
+function sessionWidgetProps(request, CredentialRequest) {
+  const source = fs.readFileSync('src/components/WorldIdSessionVerification.tsx', 'utf8');
+  const code = ts.transpileModule(source, { compilerOptions: {
+    module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX
+  } }).outputText;
+  const exports = {};
+  vm.runInNewContext(code, { exports, require: name => {
+    if (name === 'react') return { useRef: value => ({ current: value }) };
+    if (name === 'react/jsx-runtime') return { jsx: (_, props) => props };
+    if (name === '@worldcoin/idkit') return { IDKitSessionWidget: null, CredentialRequest };
+    if (name === '../config/api') return { apiUrl: path => path };
+    throw new Error(`Unexpected import ${name}`);
+  } });
+  return exports.WorldIdSessionVerification({ request, token: 'offline-fixture',
+    onClose() {}, onVerified() {}, onError() {} });
+}
+
+function withoutRequestId(envelope) {
+  const copy = structuredClone(envelope);
+  delete copy.payload.proof_request.id;
+  return copy;
+}
 
 async function main() {
   const previousFetch = global.fetch;
@@ -62,6 +88,33 @@ async function main() {
     const sessionWallet = `0x${'12'.repeat(20)}`;
     const sessionAuthTime = Math.floor(Date.now() / 1000) - 10;
     await assert.rejects(IDKit.createSession(config).preset(proofOfHuman()), /Presets are not supported/);
+    // Compare actual component inputs with the smallest same-credential, bound SDK request.
+    for (const returning of [false, true]) {
+      const signal = sessionSignal(sessionWallet, sessionAuthTime, signed.nonce);
+      const props = sessionWidgetProps({ ...config, wallet: sessionWallet,
+        wallet_auth_time: sessionAuthTime, signal, existing_session_id: returning ? sessionId : null
+      }, CredentialRequest);
+      assert.equal(props.action, undefined);
+      assert.equal(props.preset, undefined);
+      assert.equal(props.allow_legacy_proofs, undefined);
+      assert.deepEqual(props.rp_context, config.rp_context);
+      const minimalConfig = { app_id: config.app_id, rp_context: config.rp_context };
+      const minimalBuilder = returning ? IDKit.proveSession(sessionId, minimalConfig) : IDKit.createSession(minimalConfig);
+      request = await minimalBuilder.constraints(CredentialRequest('proof_of_human', { signal }));
+      const minimal = withoutRequestId(envelope);
+      request.cancel();
+      const appConfig = { app_id: props.app_id, rp_context: props.rp_context,
+        environment: props.environment, action_description: props.action_description };
+      const appBuilder = props.existing_session_id
+        ? IDKit.proveSession(props.existing_session_id, appConfig) : IDKit.createSession(appConfig);
+      request = await appBuilder.constraints(props.constraints);
+      const actual = withoutRequestId(envelope);
+      assert.equal(Object.hasOwn(actual.payload, 'action_description'), false);
+      assert.deepEqual(actual, minimal, 'App and minimal bound native envelopes differ');
+      request.cancel();
+      assert.equal(listeners.size, 0);
+    }
+    console.log('Actual session component matches minimal bound SDK request, except generated request ID, for creation and return. Native acceptance is not tested.');
     for (const returning of [false, true]) {
       const sessionSigned = signRequest({ signingKeyHex: `0x${'1'.padStart(64, '0')}`, ttl: 300 });
       const sessionConfig = { ...config, rp_context: { ...config.rp_context, nonce: sessionSigned.nonce,
