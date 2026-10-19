@@ -1,6 +1,6 @@
 const { Interface, getAddress } = require('ethers');
 const { authenticatedWalletRecipient } = require('./wallet-auth-policy');
-const { getHumanSession } = require('./world-id-session');
+const { getHumanAccess } = require('./human-access');
 const claimInterface = new Interface(['event Claimed(bytes32 indexed identityNullifier, address indexed recipient, uint256 amount)']);
 
 function validateWelcomeReceipt(receipt, contract, wallet) {
@@ -38,7 +38,7 @@ function registerWalletProfileRoutes(app, admin, provider, contract, requireAuth
         return value;
       });
       phase = 'human_session_store';
-      const worldIdVerified = Boolean(await getHumanSession(pool, address, req.authUser.auth_time));
+      const worldIdVerified = Boolean(await getHumanAccess(pool, address, req.authUser.auth_time));
       return res.json({ success: true, data: { ...profile, worldIdVerified } });
     } catch {
       console.warn('wallet_profile_failed', { phase });

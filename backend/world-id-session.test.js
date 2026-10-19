@@ -50,6 +50,7 @@ async function main() {
   const db = new PGlite();
   await db.exec(fs.readFileSync(path.join(__dirname, 'migrations/20261003_world_id.sql'), 'utf8'));
   await db.exec(fs.readFileSync(path.join(__dirname, 'migrations/20261004_world_id_sessions.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.join(__dirname, 'migrations/20261005_world_id_human_login.sql'), 'utf8'));
   let tail = Promise.resolve();
   const pool = { query: (sql, args) => db.query(sql, args), connect: async () => {
     const prior = tail; let release; tail = new Promise(resolve => { release = resolve; }); await prior;

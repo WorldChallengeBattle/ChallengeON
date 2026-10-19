@@ -30,7 +30,6 @@ export function WorldIdLoginVerification({ request, token, onClose, onVerified, 
     action={request.action}
     rp_context={request.rp_context}
     environment="production"
-    action_description="Sign in to Challenge ON"
     allow_legacy_proofs={true}
     preset={proofOfHuman({ signal: request.signal })}
     handleVerify={async result => {

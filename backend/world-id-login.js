@@ -92,6 +92,14 @@ function registerWorldIdLoginRoutes(app, pool, authenticate, env = process.env, 
       if (!configured()) return res.status(503).json({ error: 'Human login verification is not configured' });
       const authTime = req.authUser.auth_time;
       if (await getHumanLogin(pool, wallet, authTime)) return res.json({ verified: true });
+      // Enrollment is a verified wallet binding; do not repeat its one-time action on every login.
+      const enrolled = await pool.query(`UPDATE world_id_human_logins
+        SET wallet_auth_time = $3 WHERE rp_id = $1 AND wallet = $2 AND action = $4
+        AND wallet_auth_time <= $3 RETURNING wallet`, [RP_ID, wallet, authTime, LOGIN_ACTION]);
+      if (enrolled.rows.length) return res.json({ verified: true });
+      const existing = await pool.query(`SELECT wallet FROM world_id_human_logins
+        WHERE rp_id = $1 AND wallet = $2 AND action = $3`, [RP_ID, wallet, LOGIN_ACTION]);
+      if (existing.rows.length) return res.status(409).json({ error: 'A newer wallet login is active; sign in again' });
       const count = await pool.query(`SELECT count(*) FROM world_id_human_login_requests
         WHERE wallet = $1 AND created_at > now() - interval '10 minutes'`, [wallet]);
       if (Number(count.rows[0].count) >= 10) return res.status(429).json({ error: 'Try human verification again later' });

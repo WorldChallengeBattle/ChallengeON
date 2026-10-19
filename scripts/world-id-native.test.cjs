@@ -3,8 +3,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 
-function sessionWidgetProps(request, CredentialRequest) {
-  const source = fs.readFileSync('src/components/WorldIdSessionVerification.tsx', 'utf8');
+function sessionWidgetProps(request, CredentialRequest, proofOfHuman) {
+  const source = fs.readFileSync(`src/components/${proofOfHuman ? 'WorldIdLoginVerification' : 'WorldIdSessionVerification'}.tsx`, 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX
   } }).outputText;
@@ -12,11 +12,12 @@ function sessionWidgetProps(request, CredentialRequest) {
   vm.runInNewContext(code, { exports, require: name => {
     if (name === 'react') return { useRef: value => ({ current: value }) };
     if (name === 'react/jsx-runtime') return { jsx: (_, props) => props };
-    if (name === '@worldcoin/idkit') return { IDKitSessionWidget: null, CredentialRequest };
+    if (name === '@worldcoin/idkit') return { IDKitSessionWidget: null, IDKitRequestWidget: null, CredentialRequest, proofOfHuman };
     if (name === '../config/api') return { apiUrl: path => path };
     throw new Error(`Unexpected import ${name}`);
   } });
-  return exports.WorldIdSessionVerification({ request, token: 'offline-fixture',
+  const component = proofOfHuman ? exports.WorldIdLoginVerification : exports.WorldIdSessionVerification;
+  return component({ request, token: 'offline-fixture',
     onClose() {}, onVerified() {}, onError() {} });
 }
 
@@ -155,6 +156,17 @@ async function main() {
     const authTime = Math.floor(Date.now() / 1000) - 10;
     const signal = `${wallet}:${authTime}:${loginSigned.nonce}`;
     request = await IDKit.request(loginConfig).preset(proofOfHuman({ signal }));
+    const minimalLogin = withoutRequestId(envelope);
+    request.cancel();
+    const loginProps = sessionWidgetProps({ ...loginConfig, wallet, wallet_auth_time: authTime, signal }, CredentialRequest, proofOfHuman);
+    assert.equal(loginProps.allow_legacy_proofs, true);
+    assert.equal(loginProps.constraints, undefined);
+    assert.equal(loginProps.existing_session_id, undefined);
+    assert.equal(loginProps.action_description, undefined);
+    request = await IDKit.request({ app_id: loginProps.app_id, rp_context: loginProps.rp_context,
+      action: loginProps.action, allow_legacy_proofs: loginProps.allow_legacy_proofs,
+      environment: loginProps.environment }).preset(loginProps.preset);
+    assert.deepEqual(withoutRequestId(envelope), minimalLogin, 'Active login widget must match the official standard request');
     assert.equal(envelope.version, 2);
     assert.equal(envelope.payload.action, action);
     assert.equal(envelope.payload.allow_legacy_proofs, true);

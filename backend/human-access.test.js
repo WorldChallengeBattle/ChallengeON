@@ -5,13 +5,14 @@ const { createHumanAccessGate } = require('./human-access');
 async function main() {
   const wallet = '0x' + '12'.repeat(20);
   let binding = false;
+  let enrollment = false;
   let unavailable = false;
   const pool = { query: async (sql, args) => {
     if (unavailable) throw new Error('DB unavailable');
-    assert.match(sql, /world_id_login_sessions/);
+    assert.match(sql, /world_id_(login_sessions|human_logins)/);
     assert.equal(args[2], 100);
-    assert.equal(args.length, 3);
-    return { rows: binding ? [{ session_id: 'session_fixture' }] : [] };
+    assert.equal(args.length, sql.includes('human_logins') ? 4 : 3);
+    return { rows: (sql.includes('human_logins') ? enrollment : binding) ? [{ trusted: true }] : [] };
   } };
   const app = express();
   const authenticate = (req, res, next) => {
@@ -43,6 +44,8 @@ async function main() {
       assert.equal((await request(path, method, { Authorization: 'Bearer fixture' })).status, 403);
     }
     binding = true;
+    assert.equal((await request('/api/challenges', 'GET', { Authorization: 'Bearer fixture' })).status, 200);
+    binding = false; enrollment = true;
     assert.equal((await request('/api/challenges', 'GET', { Authorization: 'Bearer fixture' })).status, 200);
     assert.equal((await request('/api/challenges', 'GET', { Authorization: 'Bearer mismatched' })).status, 403);
     unavailable = true;

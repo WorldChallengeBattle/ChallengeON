@@ -21,10 +21,10 @@ async function main() {
   firestore.FieldValue = { serverTimestamp: () => 'fixture-time' };
   const pool = { query: async (sql, args) => {
     sessionCalls++;
-    assert.match(sql, /world_id_login_sessions/);
+    assert.match(sql, /world_id_(login_sessions|human_logins)/);
     assert.equal(args[1], wallet);
     assert.equal(args[2], authTime);
-    assert.equal(args.length, 3);
+    assert.equal(args.length, sql.includes('human_logins') ? 4 : 3);
     if (sessionFailure) throw new Error('secret database error');
     return { rows: trusted ? [{ session_id: 'session_fixture' }] : [] };
   } };
