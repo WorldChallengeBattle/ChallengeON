@@ -2,7 +2,7 @@ const { Wallet } = require('ethers');
 const { authenticatedWalletRecipient } = require('./wallet-auth-policy');
 const { APP_ID, RP_ID, SIGNER, signalHash, normalizedNullifier, uint256Decimal } = require('./world-id');
 
-const LOGIN_ACTION = 'challengeon-human-login';
+const LOGIN_ACTION = 'challengeon-human-enroll-v2';
 const hex = /^0x[0-9a-fA-F]{1,64}$/;
 const loginSignal = (wallet, authTime, nonce) => `${wallet.toLowerCase()}:${authTime}:${nonce}`;
 

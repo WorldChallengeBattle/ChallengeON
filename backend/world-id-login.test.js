@@ -37,7 +37,7 @@ async function main() {
     assert.throws(() => validateLoginProof(result, { ...challenge, ...change }, wallet, authTime));
   }
   for (const change of [{ environment: 'staging' }, { protocol_version: '2.0' }, { nonce: 'wrong' },
-    { action: 'challengeon-welcome-reward' }, { session_id: 'session_fixture' }, { responses: [] },
+    { action: 'challengeon-welcome-reward' }, { action: 'challengeon-human-login' }, { session_id: 'session_fixture' }, { responses: [] },
     { responses: [result.responses[0], result.responses[0]] }]) {
     assert.throws(() => validateLoginProof({ ...result, ...change }, challenge, wallet, authTime));
   }
@@ -65,6 +65,24 @@ async function main() {
   for (const migration of ['20261003_world_id.sql', '20261004_world_id_sessions.sql', '20261005_world_id_human_login.sql']) {
     await db.exec(fs.readFileSync(path.join(__dirname, 'migrations', migration), 'utf8'));
   }
+  const migrationV2 = fs.readFileSync(path.join(__dirname, 'migrations/20261027_world_id_enrollment_v2.sql'), 'utf8');
+  await db.query(`INSERT INTO world_id_human_logins
+    (rp_id,action,wallet,protocol_version,identifier,nullifier,wallet_auth_time)
+    VALUES ($1,'challengeon-human-login',$2,'4.0','proof_of_human',10,$3)`, [RP_ID, wallet, authTime]);
+  await assert.rejects(db.exec(migrationV2), /requires zero verified enrollments/);
+  await db.exec('ROLLBACK');
+  assert.equal((await db.query('SELECT action FROM world_id_human_logins')).rows[0].action, 'challengeon-human-login');
+  await db.query('DELETE FROM world_id_human_logins');
+  const historicalNonce = '0x' + 'aa'.repeat(32);
+  await db.query(`INSERT INTO world_id_human_login_requests
+    (nonce,rp_id,action,wallet,wallet_auth_time,expires_at)
+    VALUES ($1,$2,'challengeon-human-login',$3,$4,$5)`, [historicalNonce, RP_ID, wallet, authTime, challenge.expires_at]);
+  await db.exec(migrationV2);
+  assert.equal((await db.query('SELECT action FROM world_id_human_login_requests WHERE nonce=$1', [historicalNonce])).rows[0].action,
+    'challengeon-human-login');
+  await assert.rejects(db.query(`INSERT INTO world_id_human_logins
+    (rp_id,action,wallet,protocol_version,identifier,nullifier,wallet_auth_time)
+    VALUES ($1,'challengeon-human-login',$2,'4.0','proof_of_human',10,$3)`, [RP_ID, wallet, authTime]), e => e.code === '23514');
   let tail = Promise.resolve();
   const pool = { query: (sql, args) => db.query(sql, args), connect: async () => {
     const prior = tail; let release; tail = new Promise(resolve => { release = resolve; }); await prior;

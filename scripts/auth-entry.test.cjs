@@ -46,7 +46,7 @@ function fixture({ stored = false, requestVerified = stored, installed = true, m
     return { ok: true, json: async () => path.endsWith('/profile')
       ? { success: true, data: { uid: wallet, worldIdVerified: verified } }
       : requestVerified ? { verified: true } : { wallet: mismatch ? 'wrong' : wallet, wallet_auth_time: authTime,
-        app_id: 'app_a5a8b0a2d65c376bf242d317a9f4ac78', action: 'challengeon-human-login',
+        app_id: 'app_a5a8b0a2d65c376bf242d317a9f4ac78', action: 'challengeon-human-enroll-v2',
         signal: `${wallet}:${authTime}:${nonce}`, rp_context: { nonce, rp_id: 'rp_cba96127b0447fa4' }, ...requestOverride } };
   } });
   const render = () => { cursor = 0; return exports.AuthProvider({ children: 'protected-app' }); };

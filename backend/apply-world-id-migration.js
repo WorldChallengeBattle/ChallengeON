@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Client } = require('pg');
 const PROJECT = 'lkblcvkdwwyotcnhuunm';
-if (process.argv.includes('--sessions') && process.argv.includes('--human-login')) throw new Error('Choose one migration target');
+if (['--sessions', '--human-login', '--enrollment-v2'].filter(flag => process.argv.includes(flag)).length > 1) throw new Error('Choose one migration target');
 
 async function main() {
   const url = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null;
@@ -23,7 +23,8 @@ async function main() {
     host, user, password: process.env.PGPASSWORD, database: process.env.PGDATABASE, port: process.env.PGPORT || 5432,
     ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000 });
   const sessions = process.argv.includes('--sessions');
-  const humanLogin = process.argv.includes('--human-login');
+  const enrollmentV2 = process.argv.includes('--enrollment-v2');
+  const humanLogin = process.argv.includes('--human-login') || enrollmentV2;
   const tableNames = humanLogin ? ['world_id_human_login_requests', 'world_id_human_logins']
     : sessions ? ['world_id_login_requests', 'world_id_login_sessions', 'world_id_login_proofs']
     : ['world_id_requests', 'world_id_welcome_bindings'];
@@ -32,8 +33,9 @@ async function main() {
     const before = (await client.query(`SELECT relname, relrowsecurity FROM pg_class
       WHERE relnamespace = 'public'::regnamespace AND relname = ANY($1::text[])`, [tableNames])).rows;
     if (process.argv.includes('--apply')) {
-      if (before.length) throw new Error('Target tables already exist; inspect instead of applying again');
-      await client.query(fs.readFileSync(path.join(__dirname, humanLogin
+      if (enrollmentV2 ? before.length !== tableNames.length : before.length) throw new Error('Unexpected existing tables; inspect before applying');
+      await client.query(fs.readFileSync(path.join(__dirname, enrollmentV2
+        ? 'migrations/20261027_world_id_enrollment_v2.sql' : humanLogin
         ? 'migrations/20261005_world_id_human_login.sql' : sessions
           ? 'migrations/20261004_world_id_sessions.sql' : 'migrations/20261003_world_id.sql'), 'utf8'));
     }

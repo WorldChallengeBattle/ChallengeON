@@ -23,7 +23,7 @@ function widget(fetch, session = false, login = false) {
   let closes = 0;
   const component = login ? exports.WorldIdLoginVerification : session ? exports.WorldIdSessionVerification : exports.WorldIdWelcomeVerification;
   const props = component({
-    request: { signal: 'fixture', action: 'challengeon-human-login', rp_context: {}, existing_session_id: 'session_fixture' },
+    request: { signal: 'fixture', action: 'challengeon-human-enroll-v2', rp_context: {}, existing_session_id: 'session_fixture' },
     token: 'fresh-fixture', user: { getIdToken: async () => 'stale-fixture' },
     onClose: () => { closes++; }, onVerified: () => { successes++; }, onError: error => errors.push(error)
   });
@@ -116,7 +116,7 @@ async function main() {
     assert.deepEqual(JSON.parse(options.body), { result: loginResult });
     return { ok: true, json: async () => ({ success: true }) };
   }, false, true);
-  assert.equal(login.props.action, 'challengeon-human-login');
+  assert.equal(login.props.action, 'challengeon-human-enroll-v2');
   assert.equal(login.props.allow_legacy_proofs, true);
   assert.equal(login.props.environment, 'production');
   assert.equal(login.props.preset.signal, 'fixture');
@@ -130,6 +130,12 @@ async function main() {
   assert.deepEqual(failedLogin.errors, ['Login rejected']); assert.equal(failedLogin.successes(), 0);
   const cancelledLogin = widget(async () => ({}), false, true);
   cancelledLogin.props.onOpenChange(false); assert.equal(cancelledLogin.closes(), 1);
+  const replayedLogin = widget(async () => { throw new Error('Backend must not be called'); }, false, true);
+  replayedLogin.props.onError('nullifier_replayed');
+  replayedLogin.props.onSuccess(); replayedLogin.props.onOpenChange(false);
+  assert.match(replayedLogin.errors[0], /Sign-in recovery is required/);
+  assert.doesNotMatch(replayedLogin.errors[0], /Please try again/);
+  assert.equal(replayedLogin.successes(), 0); assert.equal(replayedLogin.closes(), 0);
   const nativeLogin = widget(async () => { throw new Error('Backend must not be called'); }, false, true);
   nativeLogin.props.onError('malformed_request', { transport: 'mini_app', mini_app: { platform: 'android', verify_version: 2 },
     response_payload: { status: 'error', message: 'private fixture' } });

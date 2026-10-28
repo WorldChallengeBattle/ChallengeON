@@ -105,7 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setError('');
         return token;
       } else {
-        if (data.wallet !== user.uid.toLowerCase() || data.action !== 'challengeon-human-login' ||
+        if (data.wallet !== user.uid.toLowerCase() || data.action !== 'challengeon-human-enroll-v2' ||
             data.app_id !== 'app_a5a8b0a2d65c376bf242d317a9f4ac78' || data.rp_context?.rp_id !== 'rp_cba96127b0447fa4' ||
             !/^0x[0-9a-f]{64}$/.test(data.rp_context?.nonce || '') ||
             !Number.isSafeInteger(data.wallet_auth_time) || data.wallet_auth_time <= 0 ||

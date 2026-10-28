@@ -4,7 +4,7 @@ import { apiUrl } from '../config/api';
 
 export type HumanLoginRequest = {
   app_id: `app_${string}`;
-  action: 'challengeon-human-login';
+  action: 'challengeon-human-enroll-v2';
   wallet: string;
   wallet_auth_time: number;
   signal: string;
@@ -61,7 +61,9 @@ export function WorldIdLoginVerification({ request, token, onClose, onVerified, 
           ? (response.status === 'error' ? 'native-error' : 'response-parse') : 'sdk';
         diagnostic = ` [mini_app/${platform === 'android' || platform === 'ios' ? platform : 'unknown'}/${version === 1 || version === 2 ? `verify-v${version}` : 'verify-unknown'}/${source}]`;
       }
-      onError(backendError.current || (safeCode
+      onError(backendError.current || (safeCode === 'nullifier_replayed'
+        ? `World ID enrollment was already used, but sign-in is not confirmed. Sign-in recovery is required (nullifier_replayed).${diagnostic}`
+        : safeCode
         ? `World ID sign-in failed (${safeCode}). Please try again.${diagnostic}`
         : 'Human verification was not completed. Please try again.'));
     }}

@@ -146,7 +146,7 @@ async function main() {
     }
 
     // Compare a login-only action candidate without creating a Portal action.
-    const action = 'challengeon-human-login';
+    const action = 'challengeon-human-enroll-v2';
     const loginSigned = signRequest({ signingKeyHex: `0x${'1'.padStart(64, '0')}`, action, ttl: 300 });
     const loginConfig = { ...config, action, allow_legacy_proofs: true, rp_context: {
       ...config.rp_context, nonce: loginSigned.nonce, created_at: loginSigned.createdAt,
