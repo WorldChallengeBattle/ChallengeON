@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Play, Star, Volume2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MiniKit } from '@worldcoin/minikit-js';
-import { getVideoSourceId } from '../services/videoSource';
+import { getSocialVideoEmbedUrl, getVideoSourceId } from '../services/videoSource';
 
 interface VideoPlayerProps {
   video: {
@@ -311,6 +311,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [hasWorldMiniKit, isActive, shouldUseNativeVideo, canAutoplay, video.id, video.platform]);
 
   const platformId = getVideoSourceId(video);
+  const socialEmbedUrl = getSocialVideoEmbedUrl(video, isActive === true && canAutoplay);
 
   return (
     <div ref={containerRef} className="video-item">
@@ -387,7 +388,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <iframe
               key={`${video.id}-${soundAutoplayUnlocked ? 'sound' : 'locked'}`}
               className="video-player"
-              src={`https://www.tiktok.com/embed/v2/${platformId}?autoplay=${isActive && canAutoplay ? 1 : 0}`}
+              src={socialEmbedUrl}
               title="TikTok"
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -400,7 +401,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <iframe
               key={`${video.id}-${soundAutoplayUnlocked ? 'sound' : 'locked'}`}
               className="video-player"
-              src={`https://www.instagram.com/reels/${platformId}/embed/?autoplay=${isActive && canAutoplay ? 1 : 0}`}
+              src={socialEmbedUrl}
               title="Instagram Reels"
               frameBorder="0"
               allowTransparency
