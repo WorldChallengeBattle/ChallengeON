@@ -390,7 +390,7 @@ function App() {
     catch { return []; }
   });
   const [autoplay, setAutoplay] = useState(() => localStorage.getItem('challengeon-autoplay') !== 'false');
-  const [muted, setMuted] = useState(() => localStorage.getItem('challengeon-muted') !== 'false');
+  const [muted, setMuted] = useState(false);
   const [activeRegion, setActiveRegion] = useState(() => {
     const saved = localStorage.getItem('challengeon-region');
     return saved && REGIONS.includes(saved) ? saved : REGIONS[0];
